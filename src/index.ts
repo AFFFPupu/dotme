@@ -211,4 +211,8 @@ export default new OAuthProvider({
   requiredScopes: ["mcp:read"],
   clientIdMetadataDocumentEnabled: true,
   resourceMetadata: { resource: env.MCP_RESOURCE },
+  // OAuth errors carry the failed check only in `internal`; log it so connection problems can be diagnosed.
+  onError({ code, status, internal }) {
+    console.warn(JSON.stringify({ oauthError: code, status, ...internal }));
+  },
 });

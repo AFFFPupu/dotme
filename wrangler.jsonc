@@ -6,6 +6,7 @@
   "workers_dev": true,
   // No per-version preview URLs: each would be another live endpoint with the same secrets.
   "preview_urls": false,
+  "observability": { "enabled": true },
   "vars": {
     // The URL clients connect to; every token is bound to it. .dev.vars overrides it locally.
     "MCP_RESOURCE": "https://dotme.ao-fu.workers.dev/mcp",
