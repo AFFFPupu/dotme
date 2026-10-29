@@ -5,12 +5,12 @@
 
 import { OAuthProvider, AuthorizationError, CimdFetchError } from "@cloudflare/workers-oauth-provider";
 import type { OAuthHelpers } from "@cloudflare/workers-oauth-provider";
-import { McpServer } from "@modelcontextprotocol/server";
+import { McpServer, acceptedContent, inputRequired } from "@modelcontextprotocol/server";
 import { createMcpHandler, getMcpAuthContext } from "agents/mcp/server";
 import { env as workerEnv } from "cloudflare:workers";
 import { z } from "zod";
 import { escape, handleApprovalPages, html, samePassphrase } from "./pages";
-import { getPreferences, isCategory, listPending, propose } from "./dotme";
+import { approve, getPreferences, isCategory, listPending, propose } from "./dotme";
 import { CATEGORIES, cleanLine } from "./prefs";
 import type { Category } from "./prefs";
 import { makeStore } from "./store";
@@ -37,12 +37,25 @@ replacing the old one.`;
 
 const text = (value: unknown) => ({ content: [{ type: "text" as const, text: typeof value === "string" ? value : JSON.stringify(value, null, 2) }] });
 
-function caller(): { agent: string; categories: readonly Category[] } {
+function caller(): { agent: string; categories: readonly Category[]; inlineApproval: boolean } {
   const props = getMcpAuthContext()?.props ?? {};
   // Grants made before category access existed see every category.
   const categories = Array.isArray(props.categories) ? (props.categories as unknown[]).filter(isCategory) : CATEGORIES;
-  return { agent: String(props.agent ?? "unknown"), categories };
+  return { agent: String(props.agent ?? "unknown"), categories, inlineApproval: props.inlineApproval === true };
 }
+
+// True when the request declares, in its protocol 2026-07-28 envelope, that the client can show an
+// elicitation form. 2025-era requests carry no capabilities, and this stateless server cannot push
+// a dialog to them, so they get the approval link instead.
+function clientCanElicit(envelope: Record<string, unknown> | undefined): boolean {
+  const capabilities = envelope?.["io.modelcontextprotocol/clientCapabilities"] as { elicitation?: unknown } | undefined;
+  return capabilities?.elicitation !== undefined;
+}
+
+const decisionSchema = z.object({
+  decision: z.enum(["approve", "reject"]).describe("Approve saves it now; reject drops it."),
+  when: z.string().max(120).optional().describe("Only applies when (optional), e.g. personal projects"),
+});
 
 function allowed(category: Category) {
   if (!caller().categories.includes(category)) throw new Error(`This connection cannot access ${category}`);
@@ -94,8 +107,45 @@ function createServer() {
         evidence: z.string().min(10).max(500).describe("What the user said or did that supports this, and when. A summary, not chat text."),
       },
     },
-    async (input) => {
+    async (input, context) => {
       allowed(input.category);
+      const { agent, inlineApproval } = caller();
+
+      // Approve in the client's own dialog when this connection allows it and the client can show one.
+      // The client, not the model, returns the answer; the arguments are re-sent unchanged on retry.
+      if (inlineApproval && clientCanElicit(context.mcpReq.envelope as Record<string, unknown> | undefined)) {
+        const responses = context.mcpReq.inputResponses as Record<string, unknown> | undefined;
+        const answer = acceptedContent(responses, "decision", decisionSchema);
+        if (!answer && responses?.decision === undefined) {
+          const current = input.replaces ? (await getPreferences(store, input.category)).find((p) => p.id === input.replaces) : undefined;
+          const change =
+            input.op === "add" ? `add: "${input.text}"` : input.op === "remove" ? `remove: "${current?.text ?? input.replaces}"` : `change "${current?.text ?? input.replaces}" to "${input.text}"`;
+          return inputRequired({
+            inputRequests: {
+              decision: inputRequired.elicit({
+                message: `dotme: ${agent} wants to ${change} in ${input.category}.${input.when ? ` Suggested scope: ${input.when}.` : ""} Evidence: ${input.evidence}`,
+                requestedSchema: decisionSchema,
+              }),
+            },
+          });
+        }
+        if (answer?.decision === "reject") return text({ status: "rejected", tellUser: "Nothing was saved." });
+        if (answer?.decision === "approve") {
+          const proposal = await propose(store, {
+            category: input.category,
+            op: input.op,
+            text: input.text ? cleanLine(input.text, 300) : undefined,
+            when: input.when ? cleanLine(input.when, 120) : undefined,
+            replaces: input.replaces,
+            evidence: cleanLine(input.evidence, 500),
+            by: agent,
+          });
+          await approve(store, proposal.id, cleanLine(answer.when ?? input.when ?? "", 120) || undefined);
+          return text({ status: "approved and saved", proposal: proposal.id });
+        }
+        // Declined or cancelled: keep it as a pending proposal with a link, below.
+      }
+
       const proposal = await propose(store, {
         category: input.category,
         op: input.op,
@@ -103,7 +153,7 @@ function createServer() {
         when: input.when ? cleanLine(input.when, 120) : undefined,
         replaces: input.replaces,
         evidence: cleanLine(input.evidence, 500),
-        by: caller().agent,
+        by: agent,
       });
       return text({
         status: "pending approval",
@@ -163,6 +213,7 @@ ${details.redirectIsLoopback ? "<p><strong>This sends access to an app on your c
   <input type="hidden" name="handle" value="${escape(consent.handle)}">
   <p><label>Name this agent <input name="agent" required pattern="[a-z0-9-]{2,32}" placeholder="grok-bot"></label></p>
   <p>Categories it may read and propose to: ${boxes}</p>
+  <p><label><input type="checkbox" name="inline"> Let this app ask me to approve changes in its own dialog (only for apps you trust, such as Claude Code)</label></p>
   <p><label>Passphrase <input name="passphrase" type="password" required></label></p>
   <p><button name="decision" value="approve">Allow</button> <button name="decision" value="deny" formnovalidate>Deny</button></p>
 </form>`,
@@ -190,7 +241,7 @@ ${details.redirectIsLoopback ? "<p><strong>This sends access to an app on your c
           userId: "owner",
           metadata: { agent },
           scope: approved.request.scope,
-          props: { agent, categories, authorizedAt: new Date().toISOString() },
+          props: { agent, categories, inlineApproval: form.get("inline") === "on", authorizedAt: new Date().toISOString() },
         });
         approved.headers.set("Location", redirectTo);
         return new Response(null, { status: 302, headers: approved.headers });
