@@ -1,4 +1,6 @@
-// Memory passport server entry point.
+// Memory passport: an OAuth-protected MCP endpoint over the owner's preference
+// files. Each connected agent is one OAuth grant, named by the owner on the
+// consent page, with the categories it may see. Agents read and propose; only
 // the owner approves, on /approve.
 
 import { OAuthProvider, AuthorizationError, CimdFetchError } from "@cloudflare/workers-oauth-provider";
