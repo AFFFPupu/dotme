@@ -1,6 +1,6 @@
 // Owner-facing pages: sign-in with the passphrase, then the approval page.
 
-import { approve, conflictsWith, getPreferences, getProposal, listPending, reject } from "./passport";
+import { approve, conflictsWith, getPreferences, getProposal, listPending, reject } from "./dotme";
 import { CATEGORIES, cleanLine } from "./prefs";
 import type { Store } from "./store";
 
@@ -59,7 +59,7 @@ function sameOrigin(request: Request): boolean {
 }
 
 function signInPage(error?: string): Response {
-  return html(`<title>Sign in</title><h1>Memory passport</h1>
+  return html(`<title>Sign in</title><h1>dotme</h1>
 ${error ? `<p><strong>${escape(error)}</strong></p>` : ""}
 <form method="post"><input type="hidden" name="action" value="signin">
 <p><label>Passphrase <input name="passphrase" type="password" required autofocus></label></p>

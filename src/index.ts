@@ -1,7 +1,7 @@
-// Memory passport: an OAuth-protected MCP endpoint over the owner's preference
-// files. Each connected agent is one OAuth grant, named by the owner on the
-// consent page, with the categories it may see. Agents read and propose; only
-// the owner approves, on /approve.
+// dotme, dotfiles for AI agents: an OAuth-protected MCP endpoint over the
+// owner's preference files. Each connected agent is one OAuth grant, named by
+// the owner on the consent page, with the categories it may see. Agents read
+// and propose; only the owner approves, on /approve.
 
 import { OAuthProvider, AuthorizationError, CimdFetchError } from "@cloudflare/workers-oauth-provider";
 import type { OAuthHelpers } from "@cloudflare/workers-oauth-provider";
@@ -10,7 +10,7 @@ import { createMcpHandler, getMcpAuthContext } from "agents/mcp/server";
 import { env as workerEnv } from "cloudflare:workers";
 import { z } from "zod";
 import { escape, handleApprovalPages, html, samePassphrase } from "./pages";
-import { getPreferences, isCategory, listPending, propose } from "./passport";
+import { getPreferences, isCategory, listPending, propose } from "./dotme";
 import { CATEGORIES, cleanLine } from "./prefs";
 import type { Category } from "./prefs";
 import { makeStore } from "./store";
@@ -47,7 +47,7 @@ function allowed(category: Category) {
 }
 
 function createServer() {
-  const server = new McpServer({ name: "memory-passport", version: "0.1.0" }, { instructions: INSTRUCTIONS });
+  const server = new McpServer({ name: "dotme", version: "0.1.0" }, { instructions: INSTRUCTIONS });
   const store = makeStore(env);
   const category = z.enum(CATEGORIES);
 
@@ -130,7 +130,7 @@ const AuthHandler = {
     if (approval) return approval;
 
     const url = new URL(request.url);
-    if (url.pathname !== "/authorize") return new Response("memory-passport", { status: 200 });
+    if (url.pathname !== "/authorize") return new Response("dotme", { status: 200 });
 
     const oauth = env.OAUTH_PROVIDER;
     try {
@@ -144,7 +144,7 @@ const AuthHandler = {
         const boxes = CATEGORIES.map((c) => `<label><input type="checkbox" name="category" value="${c}" checked> ${c}</label>`).join(" ");
         return html(
           `<title>Connect ${escape(details.clientName)}</title>
-<h1>Connect ${escape(details.clientName)} to your memory passport?</h1>
+<h1>Connect ${escape(details.clientName)} to dotme?</h1>
 <p>${source} Access will be sent to <strong>${escape(details.redirectHost)}</strong>.</p>
 ${details.redirectIsLoopback ? "<p><strong>This sends access to an app on your computer.</strong> Continue only if you just started connecting from it.</p>" : ""}
 <form method="post">
