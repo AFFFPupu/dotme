@@ -1,6 +1,5 @@
-// Memory passport test server: OAuth-protected MCP endpoint with sample data.
-// Goal: prove which auth flow each client (Grok Bot, Claude) runs, and that the
-// server can tell connected agents apart. Preferences are hard-coded for now.
+// Memory passport server entry point.
+// the owner approves, on /approve.
 
 import { OAuthProvider, AuthorizationError, CimdFetchError } from "@cloudflare/workers-oauth-provider";
 import type { OAuthHelpers } from "@cloudflare/workers-oauth-provider";
@@ -8,67 +7,113 @@ import { McpServer } from "@modelcontextprotocol/server";
 import { createMcpHandler, getMcpAuthContext } from "agents/mcp/server";
 import { env as workerEnv } from "cloudflare:workers";
 import { z } from "zod";
+import { escape, handleApprovalPages, html, samePassphrase } from "./pages";
+import { getPreferences, isCategory, listPending, propose } from "./passport";
+import { CATEGORIES, cleanLine } from "./prefs";
+import type { Category } from "./prefs";
+import { makeStore } from "./store";
+import type { StoreEnv } from "./store";
 
-interface Env {
-  OAUTH_KV: KVNamespace;
+interface Env extends StoreEnv {
   OAUTH_PROVIDER: OAuthHelpers;
   OWNER_PASSPHRASE: string;
   MCP_RESOURCE: string;
 }
 
-const SAMPLE: Record<string, string[]> = {
-  collab: [
-    "Reply in natural Chinese; keep code, paths and English tech terms in English.",
-    "Recommend one option instead of offering a menu.",
-    "Ask before any outward-facing action.",
-  ],
-  coding: ["Prefer Cloudflare over Supabase for personal projects. (when: personal projects)"],
-  life: ["Timezone: Europe/London."],
-};
+const env = workerEnv as unknown as Env;
+const origin = () => new URL(env.MCP_RESOURCE).origin;
+
+const INSTRUCTIONS = `This server holds the user's personal preferences for AI agents, in categories.
+Read them with get_preferences and follow them. Never claim a preference was saved:
+propose_change only creates a proposal, and the user approves it on a page you link to.
+Propose a change only after asking the user in conversation, with specific evidence
+(what they said or did, and when). When a new preference seems to contradict an old one,
+ask whether it applies only in some situations and propose it with "when" instead of
+replacing the old one.`;
+
+const text = (value: unknown) => ({ content: [{ type: "text" as const, text: typeof value === "string" ? value : JSON.stringify(value, null, 2) }] });
+
+function caller(): { agent: string; categories: readonly Category[] } {
+  const props = getMcpAuthContext()?.props ?? {};
+  // Grants made before category access existed see every category.
+  const categories = Array.isArray(props.categories) ? (props.categories as unknown[]).filter(isCategory) : CATEGORIES;
+  return { agent: String(props.agent ?? "unknown"), categories };
+}
+
+function allowed(category: Category) {
+  if (!caller().categories.includes(category)) throw new Error(`This connection cannot access ${category}`);
+}
 
 function createServer() {
-  const server = new McpServer({ name: "memory-passport-test", version: "0.0.1" });
+  const server = new McpServer({ name: "memory-passport", version: "0.1.0" }, { instructions: INSTRUCTIONS });
+  const store = makeStore(env);
+  const category = z.enum(CATEGORIES);
 
   server.registerTool(
     "whoami",
-    { description: "Which agent this connection was authorized as, and how." },
-    async (context) => {
-      const auth = getMcpAuthContext();
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify({
-              agent: auth?.props.agent,
-              authorizedAt: auth?.props.authorizedAt,
-              clientId: context.http?.authInfo?.clientId,
-              scopes: context.http?.authInfo?.scopes,
-            }),
-          },
-        ],
-      };
-    }
+    { description: "Which agent this connection was authorized as, and the categories it can access." },
+    async () => text({ ...caller(), authorizedAt: getMcpAuthContext()?.props.authorizedAt })
   );
 
   server.registerTool(
     "list_categories",
-    { description: "List preference categories and how many items each holds." },
-    async () => ({
-      content: [
-        { type: "text", text: JSON.stringify(Object.fromEntries(Object.entries(SAMPLE).map(([k, v]) => [k, v.length]))) },
-      ],
-    })
+    { description: "Categories this connection can read, with how many preferences each holds." },
+    async () => {
+      const counts = await Promise.all(caller().categories.map(async (c) => [c, (await getPreferences(store, c)).length]));
+      return text(Object.fromEntries(counts));
+    }
   );
 
   server.registerTool(
     "get_preferences",
     {
-      description: "Get the user's preferences in one category. Test data only.",
-      inputSchema: { category: z.enum(["collab", "coding", "life"]) },
+      description: "The user's preferences in one category. Each has an id (use it as `replaces`) and an optional `when` scope.",
+      inputSchema: { category },
     },
-    async ({ category }) => ({
-      content: [{ type: "text", text: SAMPLE[category].map((p) => `- ${p}`).join("\n") }],
-    })
+    async ({ category }) => {
+      allowed(category);
+      return text(await getPreferences(store, category));
+    }
+  );
+
+  server.registerTool(
+    "propose_change",
+    {
+      description:
+        "Propose adding, changing or removing a preference. Ask the user first. Returns a link: send it to the user, who approves or rejects there. Nothing changes until they do.",
+      inputSchema: {
+        category,
+        op: z.enum(["add", "change", "remove"]),
+        text: z.string().max(300).optional().describe("The preference in one plain sentence. Required for add and change."),
+        when: z.string().max(120).optional().describe("Situations it applies to, e.g. 'personal projects'. Omit for always."),
+        replaces: z.string().optional().describe("Id of the preference to change or remove."),
+        evidence: z.string().min(10).max(500).describe("What the user said or did that supports this, and when. A summary, not chat text."),
+      },
+    },
+    async (input) => {
+      allowed(input.category);
+      const proposal = await propose(store, {
+        category: input.category,
+        op: input.op,
+        text: input.text ? cleanLine(input.text, 300) : undefined,
+        when: input.when ? cleanLine(input.when, 120) : undefined,
+        replaces: input.replaces,
+        evidence: cleanLine(input.evidence, 500),
+        by: caller().agent,
+      });
+      return text({
+        status: "pending approval",
+        proposal: proposal.id,
+        approveAt: `${origin()}/approve/${proposal.id}`,
+        tellUser: "Send the user this link. The change is not saved until they approve it there.",
+      });
+    }
+  );
+
+  server.registerTool(
+    "list_pending",
+    { description: "Open proposals in the categories this connection can access, oldest first." },
+    async () => text(await listPending(store, caller().categories))
   );
 
   return server;
@@ -76,26 +121,14 @@ function createServer() {
 
 const mcpHandler = createMcpHandler(createServer);
 
-const escape = (value: string) => value.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
-const html = (body: string, headers = new Headers()) => {
-  headers.set("Content-Type", "text/html; charset=utf-8");
-  return new Response(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width">${body}`, { headers });
-};
-
-// Constant-time comparison so the passphrase check does not leak through timing.
-async function samePassphrase(given: string, expected: string): Promise<boolean> {
-  const enc = new TextEncoder();
-  const [a, b] = await Promise.all(
-    [given, expected].map((s) => crypto.subtle.digest("SHA-256", enc.encode(s)))
-  );
-  // timingSafeEqual is a Workers extension to SubtleCrypto.
-  return (crypto.subtle as SubtleCrypto & { timingSafeEqual(a: ArrayBuffer, b: ArrayBuffer): boolean }).timingSafeEqual(a, b);
-}
-
 const AuthHandler = {
   async fetch(request: Request, env: Env): Promise<Response> {
+    if (!env.OWNER_PASSPHRASE) return new Response("Server has no OWNER_PASSPHRASE set.", { status: 503 });
+    const approval = await handleApprovalPages(request, env.OWNER_PASSPHRASE, makeStore(env));
+    if (approval) return approval;
+
     const url = new URL(request.url);
-    if (url.pathname !== "/authorize") return new Response("memory-passport test server", { status: 200 });
+    if (url.pathname !== "/authorize") return new Response("memory-passport", { status: 200 });
 
     const oauth = env.OAUTH_PROVIDER;
     try {
@@ -103,18 +136,19 @@ const AuthHandler = {
         const authRequest = await oauth.parseAuthRequest(request);
         const details = await oauth.describeConsent(authRequest);
         const consent = await oauth.beginConsent(authRequest);
-        const origin = details.clientDomain
+        const source = details.clientDomain
           ? `Published by <strong>${escape(details.clientDomain)}</strong>.`
           : "This app registered itself; its name is not verified.";
+        const boxes = CATEGORIES.map((c) => `<label><input type="checkbox" name="category" value="${c}" checked> ${c}</label>`).join(" ");
         return html(
           `<title>Connect ${escape(details.clientName)}</title>
 <h1>Connect ${escape(details.clientName)} to your memory passport?</h1>
-<p>${origin} Access will be sent to <strong>${escape(details.redirectHost)}</strong>.</p>
+<p>${source} Access will be sent to <strong>${escape(details.redirectHost)}</strong>.</p>
 ${details.redirectIsLoopback ? "<p><strong>This sends access to an app on your computer.</strong> Continue only if you just started connecting from it.</p>" : ""}
-<p>Scopes: ${details.scope.map(escape).join(", ") || "(none)"}</p>
 <form method="post">
   <input type="hidden" name="handle" value="${escape(consent.handle)}">
   <p><label>Name this agent <input name="agent" required pattern="[a-z0-9-]{2,32}" placeholder="grok-bot"></label></p>
+  <p>Categories it may read and propose to: ${boxes}</p>
   <p><label>Passphrase <input name="passphrase" type="password" required></label></p>
   <p><button name="decision" value="approve">Allow</button> <button name="decision" value="deny" formnovalidate>Deny</button></p>
 </form>`,
@@ -129,12 +163,12 @@ ${details.redirectIsLoopback ? "<p><strong>This sends access to an app on your c
           const denied = await oauth.denyConsent(request, handle);
           return new Response(null, { status: 302, headers: denied.headers });
         }
-        if (!env.OWNER_PASSPHRASE) return new Response("Server has no OWNER_PASSPHRASE set.", { status: 503 });
         if (!(await samePassphrase(String(form.get("passphrase") ?? ""), env.OWNER_PASSPHRASE))) {
           return new Response("Wrong passphrase. Go back and start the connection again.", { status: 403 });
         }
         const agent = String(form.get("agent") ?? "");
         if (!/^[a-z0-9-]{2,32}$/.test(agent)) return new Response("Invalid agent name.", { status: 400 });
+        const categories = form.getAll("category").map(String).filter(isCategory);
 
         const approved = await oauth.approveConsent(request, handle, { scope: ["mcp:read"] });
         const { redirectTo } = await oauth.completeAuthorization({
@@ -142,7 +176,7 @@ ${details.redirectIsLoopback ? "<p><strong>This sends access to an app on your c
           userId: "owner",
           metadata: { agent },
           scope: approved.request.scope,
-          props: { agent, authorizedAt: new Date().toISOString() },
+          props: { agent, categories, authorizedAt: new Date().toISOString() },
         });
         approved.headers.set("Location", redirectTo);
         return new Response(null, { status: 302, headers: approved.headers });
@@ -174,5 +208,5 @@ export default new OAuthProvider({
   scopesSupported: ["mcp:read"],
   requiredScopes: ["mcp:read"],
   clientIdMetadataDocumentEnabled: true,
-  resourceMetadata: { resource: (workerEnv as unknown as Env).MCP_RESOURCE },
+  resourceMetadata: { resource: env.MCP_RESOURCE },
 });
