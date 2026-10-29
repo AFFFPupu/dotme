@@ -20,6 +20,8 @@ interface Env extends StoreEnv {
   OAUTH_PROVIDER: OAuthHelpers;
   OWNER_PASSPHRASE: string;
   MCP_RESOURCE: string;
+  // Read-only token for scripts that copy the core into a client, such as the Claude Code SessionStart hook.
+  EXPORT_TOKEN?: string;
 }
 
 const env = workerEnv as unknown as Env;
@@ -123,9 +125,19 @@ function createServer() {
 
 const mcpHandler = createMcpHandler(createServer);
 
+// The core (collab) as plain Markdown for clients that copy it in at session start.
+async function exportCore(request: Request, env: Env): Promise<Response> {
+  const given = request.headers.get("Authorization")?.replace(/^Bearer /, "") ?? "";
+  if (!env.EXPORT_TOKEN || !(await samePassphrase(given, env.EXPORT_TOKEN))) return new Response("Unauthorized", { status: 401 });
+  const prefs = await getPreferences(makeStore(env), "collab");
+  const lines = prefs.map((p) => `- ${p.text}${p.when ? ` (when: ${p.when})` : ""}`);
+  return new Response(`${lines.join("\n")}\n`, { headers: { "Content-Type": "text/markdown; charset=utf-8", "Cache-Control": "no-store" } });
+}
+
 const AuthHandler = {
   async fetch(request: Request, env: Env): Promise<Response> {
     if (!env.OWNER_PASSPHRASE) return new Response("Server has no OWNER_PASSPHRASE set.", { status: 503 });
+    if (new URL(request.url).pathname === "/export/collab.md") return exportCore(request, env);
     const approval = await handleApprovalPages(request, env.OWNER_PASSPHRASE, makeStore(env));
     if (approval) return approval;
 
