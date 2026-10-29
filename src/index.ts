@@ -188,7 +188,7 @@ const AuthHandler = {
   async fetch(request: Request, env: Env): Promise<Response> {
     if (!env.OWNER_PASSPHRASE) return new Response("Server has no OWNER_PASSPHRASE set.", { status: 503 });
     if (new URL(request.url).pathname === "/export/collab.md") return exportCore(request, env);
-    const approval = await handleApprovalPages(request, env.OWNER_PASSPHRASE, makeStore(env));
+    const approval = await handleApprovalPages(request, env.OWNER_PASSPHRASE, makeStore(env), env.OAUTH_KV);
     if (approval) return approval;
 
     const url = new URL(request.url);

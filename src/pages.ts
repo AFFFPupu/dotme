@@ -2,10 +2,11 @@
 
 import { approve, conflictsWith, getPreferences, getProposal, listPending, reject } from "./dotme";
 import { CATEGORIES, cleanLine } from "./prefs";
+import { authenticate, authenticationOptions, hasPasskeys, PASSKEY_SCRIPT, register, registrationOptions } from "./passkeys";
 import type { Store } from "./store";
 
 const COOKIE = "owner_session";
-const SESSION_SECONDS = 60 * 60 * 12;
+const SESSION_SECONDS = 60 * 60 * 24 * 30;
 
 export const escape = (value: string) => value.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
@@ -58,31 +59,48 @@ function sameOrigin(request: Request): boolean {
   return request.headers.get("Origin") === new URL(request.url).origin;
 }
 
-function signInPage(error?: string): Response {
+function signInPage(passkeys: boolean, error?: string): Response {
   return html(`<title>Sign in</title><h1>dotme</h1>
 ${error ? `<p><strong>${escape(error)}</strong></p>` : ""}
+${passkeys ? `<p><button onclick="passkey('login')">Sign in with passkey</button></p><p>or use the passphrase:</p>${PASSKEY_SCRIPT}` : ""}
 <form method="post"><input type="hidden" name="action" value="signin">
 <p><label>Passphrase <input name="passphrase" type="password" required autofocus></label></p>
 <p><button>Sign in</button></p></form>`, new Headers(), error ? 403 : 200);
 }
 
-export async function handleApprovalPages(request: Request, passphrase: string, store: Store): Promise<Response | null> {
+async function sessionCookie(passphrase: string): Promise<string> {
+  return `${COOKIE}=${encodeURIComponent(await signSession(passphrase))}; Path=/; Max-Age=${SESSION_SECONDS}; HttpOnly; Secure; SameSite=Lax`;
+}
+
+export async function handleApprovalPages(request: Request, passphrase: string, store: Store, kv: KVNamespace): Promise<Response | null> {
   const url = new URL(request.url);
+  if (request.method === "POST" && url.pathname.startsWith("/approve") && !sameOrigin(request)) return new Response("Bad origin", { status: 403 });
+
+  const passkeyRoute = url.pathname.match(/^\/approve\/passkey\/(login-options|login|register-options|register)$/)?.[1];
+  if (passkeyRoute && request.method === "POST") {
+    if (passkeyRoute === "login-options") return authenticationOptions(kv, request);
+    if (passkeyRoute === "login") {
+      if (!(await authenticate(kv, request))) return new Response("Passkey not recognised", { status: 403 });
+      return new Response(null, { status: 204, headers: { "Set-Cookie": await sessionCookie(passphrase) } });
+    }
+    if (!(await hasSession(request, passphrase))) return new Response("Sign in first", { status: 403 });
+    return passkeyRoute === "register-options" ? registrationOptions(kv, request) : register(kv, request);
+  }
+
   const match = url.pathname.match(/^\/approve(?:\/(q-[0-9a-f]{8}))?$/);
   if (!match) return null;
-  if (request.method === "POST" && !sameOrigin(request)) return new Response("Bad origin", { status: 403 });
 
   const form = request.method === "POST" ? await request.formData() : null;
   if (form?.get("action") === "signin") {
-    if (!(await samePassphrase(String(form.get("passphrase") ?? ""), passphrase))) return signInPage("Wrong passphrase.");
+    if (!(await samePassphrase(String(form.get("passphrase") ?? ""), passphrase))) return signInPage(await hasPasskeys(kv), "Wrong passphrase.");
     const headers = new Headers({ Location: url.pathname });
-    headers.append("Set-Cookie", `${COOKIE}=${encodeURIComponent(await signSession(passphrase))}; Path=/; Max-Age=${SESSION_SECONDS}; HttpOnly; Secure; SameSite=Lax`);
+    headers.append("Set-Cookie", await sessionCookie(passphrase));
     return new Response(null, { status: 303, headers });
   }
-  if (!(await hasSession(request, passphrase))) return signInPage();
+  if (!(await hasSession(request, passphrase))) return signInPage(await hasPasskeys(kv));
 
   const id = match[1];
-  if (!id) return pendingListPage(store);
+  if (!id) return pendingListPage(store, await hasPasskeys(kv));
 
   if (form) {
     const decision = form.get("decision");
@@ -115,8 +133,9 @@ ${proposal.op === "remove" ? "" : `<p><label>Only applies when (optional, e.g. "
 </form><p><a href="/approve">All pending</a></p>`);
 }
 
-async function pendingListPage(store: Store): Promise<Response> {
+async function pendingListPage(store: Store, passkeys: boolean): Promise<Response> {
   const pending = await listPending(store, CATEGORIES);
   const rows = pending.map((p) => `<li><a href="/approve/${escape(p.id)}">${escape(p.by)} · ${escape(p.category)} · ${escape(p.op)}: ${escape(p.text ?? p.replaces ?? "")}</a></li>`);
-  return html(`<title>Pending</title><h1>Pending proposals</h1>${rows.length ? `<ul>${rows.join("")}</ul>` : "<p>Nothing pending.</p>"}`);
+  return html(`<title>Pending</title><h1>Pending proposals</h1>${rows.length ? `<ul>${rows.join("")}</ul>` : "<p>Nothing pending.</p>"}
+<p><button onclick="passkey('register')">${passkeys ? "Add a passkey on this device" : "Set up a passkey (Face ID or Touch ID)"}</button></p>${PASSKEY_SCRIPT}`);
 }
