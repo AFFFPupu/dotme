@@ -129,6 +129,7 @@ ${details.redirectIsLoopback ? "<p><strong>This sends access to an app on your c
           const denied = await oauth.denyConsent(request, handle);
           return new Response(null, { status: 302, headers: denied.headers });
         }
+        if (!env.OWNER_PASSPHRASE) return new Response("Server has no OWNER_PASSPHRASE set.", { status: 503 });
         if (!(await samePassphrase(String(form.get("passphrase") ?? ""), env.OWNER_PASSPHRASE))) {
           return new Response("Wrong passphrase. Go back and start the connection again.", { status: 403 });
         }

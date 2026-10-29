@@ -14,7 +14,7 @@ the `whoami` tool.
 
 ```bash
 npm install
-printf 'OWNER_PASSPHRASE=local-test-passphrase\n' > .dev.vars
+printf 'OWNER_PASSPHRASE=local-test-passphrase\nMCP_RESOURCE=http://localhost:8787/mcp\n' > .dev.vars
 npm run dev
 node scripts/e2e.mjs
 ```
