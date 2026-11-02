@@ -34,3 +34,12 @@ npm run dev
 node scripts/e2e.mjs
 npx tsc --noEmit
 ```
+
+CI (`.github/workflows/ci.yml`) runs the same checks on every push; run them
+before pushing:
+
+```bash
+npm run typecheck
+npm test          # unit tests (vitest) for parsing, serializing, proposals, conflicts
+npm run e2e       # starts its own wrangler dev on :8788 with fresh KV state
+```
