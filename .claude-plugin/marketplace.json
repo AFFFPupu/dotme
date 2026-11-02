@@ -1,0 +1,16 @@
+{
+  "name": "dotme",
+  "owner": {
+    "name": "dotme"
+  },
+  "metadata": {
+    "description": "dotme plugins: your preferences in every agent session."
+  },
+  "plugins": [
+    {
+      "name": "dotme",
+      "source": "./clients/claude-code",
+      "description": "Load your dotme preferences into every Claude Code session and connect the dotme MCP server."
+    }
+  ]
+}

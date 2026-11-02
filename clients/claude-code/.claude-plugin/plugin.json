@@ -1,0 +1,24 @@
+{
+  "name": "dotme",
+  "version": "0.1.0",
+  "description": "Dotfiles for your AI agents: loads your dotme preferences at session start and connects the dotme MCP server.",
+  "author": {
+    "name": "dotme contributors"
+  },
+  "license": "MIT",
+  "userConfig": {
+    "server_url": {
+      "type": "string",
+      "title": "dotme server URL",
+      "description": "Your own dotme deployment, for example https://dotme.example.workers.dev",
+      "required": true
+    },
+    "categories": {
+      "type": "string",
+      "title": "Categories to load at session start",
+      "description": "Comma-separated preference categories the SessionStart hook loads",
+      "required": false,
+      "default": "collab,coding"
+    }
+  }
+}
