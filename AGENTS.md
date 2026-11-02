@@ -12,7 +12,10 @@ earlier plan or review.
 
 - This repo is an open-source template that each user deploys for themselves.
   Ao's own deployment is just one install; never put account-specific values
-  (Worker name, KV ids, data repo, URLs) in tracked files.
+  (Worker name, KV ids, data repo, URLs) in tracked files. They live in the
+  gitignored `dotme.config.json`; deploy with `npm run deploy` and run account
+  commands as `npm run wrangler -- <command>`. A bare `wrangler deploy` uses
+  the template and would point the Worker at a new KV namespace.
 - Setup must stay agent-friendly: copy-pasteable commands, human-only steps
   clearly marked, every step verifiable through `/setup/status`.
 - Secrets are typed by a human directly into a prompt such as

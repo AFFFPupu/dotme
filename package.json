@@ -1,11 +1,14 @@
 {
   "name": "dotme",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
+    "configure": "node scripts/configure.mjs",
+    "deploy": "node scripts/configure.mjs && wrangler deploy --config wrangler.deploy.jsonc",
+    "wrangler": "node scripts/configure.mjs && wrangler --config wrangler.deploy.jsonc",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

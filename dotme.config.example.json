@@ -1,0 +1,6 @@
+{
+  "workerName": "dotme",
+  "url": "https://dotme.<your-subdomain>.workers.dev",
+  "kvNamespaceId": "00000000000000000000000000000000",
+  "githubRepo": "your-github-login/dotme-data"
+}
