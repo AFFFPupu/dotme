@@ -1,7 +1,8 @@
 // dotme, dotfiles for AI agents: an OAuth-protected MCP endpoint over the
 // owner's preference files. Each connected agent is one OAuth grant, named by
 // the owner on the consent page, with the categories it may see. Agents read
-// and propose; only the owner approves, on /approve.
+// and propose; only the owner approves, in the app's own dialog or on /approve.
+// The consent page and /approve share one owner session.
 
 import { OAuthProvider, AuthorizationError, CimdFetchError } from "@cloudflare/workers-oauth-provider";
 import type { OAuthHelpers } from "@cloudflare/workers-oauth-provider";
@@ -9,11 +10,13 @@ import { CLIENT_CAPABILITIES_META_KEY, McpServer, PROTOCOL_VERSION_META_KEY, acc
 import { createMcpHandler, getMcpAuthContext } from "agents/mcp/server";
 import { env as workerEnv } from "cloudflare:workers";
 import { z } from "zod";
-import { escape, handleApprovalPages, hasSession, html, samePassphrase } from "./pages";
+import { escape, handleApprovalPages, hasSession, html, samePassphrase, sessionCookie } from "./pages";
+import { checkPassphrase, lockMessage } from "./ratelimit";
 import { hasPasskeys, PASSKEY_SCRIPT } from "./passkeys";
-import { approve, getPreferences, isCategory, listPending, propose } from "./dotme";
-import { CATEGORIES, cleanLine } from "./prefs";
+import { approve, getPreferences, listCategories, listPending, propose } from "./dotme";
+import { CATEGORY_NAME, DEFAULT_CATEGORIES, cleanLine, isCategoryName } from "./prefs";
 import type { Category, Preference } from "./prefs";
+import { setupStatus } from "./setup";
 import { makeStore } from "./store";
 import type { StoreEnv } from "./store";
 
@@ -29,15 +32,17 @@ const env = workerEnv as unknown as Env;
 const origin = () => new URL(env.MCP_RESOURCE).origin;
 
 const INSTRUCTIONS = `This server holds the user's personal preferences for AI agents, in categories.
-Read them with get_preferences and follow them. Never claim a preference was saved:
-propose_change only creates a proposal, and the user approves it on a page you link to.
+Read them with get_preferences and follow them. Never claim a preference was saved unless
+propose_change says so: it returns "approved and saved" only when the user accepted it in this
+app's own approval dialog. Otherwise it returns "pending approval" with a link; send the user
+that link, where they approve or reject it, and say it is not saved yet.
 Propose a change only after asking the user in conversation, with specific evidence
 (what they said or did, and when). When a new preference seems to contradict an old one,
 ask whether it applies only in some situations and propose it with "when" instead of
 replacing the old one.`;
 
-// What each category is for, shown on the consent page.
-const CATEGORY_HINTS: Record<Category, string> = {
+// What the default categories are for, shown on the consent page.
+const CATEGORY_HINTS: Record<string, string> = {
   collab: "how to work and talk with you",
   coding: "stack, tools and code style",
   life: "personal facts such as timezone",
@@ -53,8 +58,9 @@ const text = (value: unknown) => ({ content: [{ type: "text" as const, text: typ
 
 function caller(): { agent: string; categories: readonly Category[]; inlineApproval: boolean } {
   const props = getMcpAuthContext()?.props ?? {};
-  // Grants made before category access existed see every category.
-  const categories = Array.isArray(props.categories) ? (props.categories as unknown[]).filter(isCategory) : CATEGORIES;
+  // Grants record the categories ticked on the consent page, so categories added later stay hidden
+  // until the owner re-authorizes. Grants made before categories were recorded see the defaults.
+  const categories = Array.isArray(props.categories) ? (props.categories as unknown[]).filter(isCategoryName) : DEFAULT_CATEGORIES;
   return { agent: String(props.agent ?? "unknown"), categories, inlineApproval: props.inlineApproval === true };
 }
 
@@ -101,7 +107,8 @@ function allowed(category: Category) {
 function createServer() {
   const server = new McpServer({ name: "dotme", version: "0.1.0" }, { instructions: INSTRUCTIONS });
   const store = makeStore(env);
-  const category = z.enum(CATEGORIES);
+  // Categories are files in the store, so the schema checks the name; allowed() checks access.
+  const category = z.string().regex(CATEGORY_NAME).describe("A category this connection can access, from list_categories.");
 
   server.registerTool(
     "whoami",
@@ -135,7 +142,7 @@ function createServer() {
     "propose_change",
     {
       description:
-        "Propose adding, changing or removing a preference. Ask the user first. Returns a link: send it to the user, who approves or rejects there. Nothing changes until they do.",
+        "Propose adding, changing or removing a preference. Ask the user first. The user may approve it in this app's dialog (status \"approved and saved\"). Otherwise it returns a link (status \"pending approval\"): send it to the user, who approves or rejects there. Nothing changes until they do.",
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
       inputSchema: {
         category,
@@ -237,18 +244,21 @@ async function exportPreferences(request: Request, env: Env): Promise<Response> 
 
   const asked = url.searchParams.get("categories");
   const names = asked === null ? [...DEFAULT_EXPORT] : [...new Set(asked.split(",").map((c) => c.trim()).filter(Boolean))];
-  const unknown = names.filter((c) => !isCategory(c));
+  const known = await listCategories(store);
+  const unknown = names.filter((c) => !known.includes(c));
   if (names.length === 0 || unknown.length > 0) {
-    return markdown(`Unknown category: ${unknown.join(", ") || "(none given)"}. Known: ${CATEGORIES.join(", ")}.\n`, 400);
+    return markdown(`Unknown category: ${unknown.join(", ") || "(none given)"}. Known: ${known.join(", ")}.\n`, 400);
   }
   const sections = await Promise.all(
-    (names as Category[]).map(async (c) => `## ${c}\n\n${formatPrefs(await getPreferences(store, c)) || "(none yet)"}`)
+    names.map(async (c) => `## ${c}\n\n${formatPrefs(await getPreferences(store, c)) || "(none yet)"}`)
   );
   return markdown(`${sections.join("\n\n")}\n`);
 }
 
 const AuthHandler = {
   async fetch(request: Request, env: Env): Promise<Response> {
+    // Before the passphrase check: the status page is how a new install finds out what is missing.
+    if (new URL(request.url).pathname === "/setup/status") return setupStatus(request, env);
     if (!env.OWNER_PASSPHRASE) return new Response("Server has no OWNER_PASSPHRASE set.", { status: 503 });
     const path = new URL(request.url).pathname;
     if (path === "/export" || path === "/export/collab.md") return exportPreferences(request, env);
@@ -268,8 +278,8 @@ const AuthHandler = {
           ? `Published by <strong>${escape(details.clientDomain)}</strong>.`
           : "This app registered itself; its name is not verified.";
         const signedIn = await hasSession(request, env.OWNER_PASSPHRASE);
-        const boxes = CATEGORIES.map(
-          (c) => `<label><input type="checkbox" name="category" value="${c}" checked> <strong>${c}</strong>: ${CATEGORY_HINTS[c]}</label><br>`
+        const boxes = (await listCategories(makeStore(env))).map(
+          (c) => `<label><input type="checkbox" name="category" value="${escape(c)}" checked> <strong>${escape(c)}</strong>${CATEGORY_HINTS[c] ? `: ${CATEGORY_HINTS[c]}` : ""}</label><br>`
         ).join("\n");
         // Apps on this computer (Claude Code, Codex) can show their own approval dialog; web apps use the link.
         const inline = details.redirectIsLoopback ? " checked" : "";
@@ -301,14 +311,24 @@ ${details.redirectIsLoopback ? "<p><strong>This sends access to an app on your c
           const denied = await oauth.denyConsent(request, handle);
           return new Response(null, { status: 302, headers: denied.headers });
         }
-        // A signed-in owner (passkey or passphrase on /approve) does not type the passphrase again.
-        const owner = (await hasSession(request, env.OWNER_PASSPHRASE)) || (await samePassphrase(String(form.get("passphrase") ?? ""), env.OWNER_PASSPHRASE));
-        if (!owner) {
-          return new Response("Wrong passphrase. Go back and start the connection again.", { status: 403 });
+        // A signed-in owner (passkey or passphrase, here or on /approve) does not type the passphrase again.
+        // Signing in here with the passphrase starts the same owner session, so /approve needs no second sign-in.
+        let signIn: string | undefined;
+        if (!(await hasSession(request, env.OWNER_PASSPHRASE))) {
+          const check = await checkPassphrase(env.OAUTH_KV, request, String(form.get("passphrase") ?? ""), (given) => samePassphrase(given, env.OWNER_PASSPHRASE));
+          if (!check.ok) {
+            const plain = { "Content-Type": "text/plain; charset=utf-8" };
+            if (check.lockedFor > 0) {
+              return new Response(lockMessage(check.lockedFor), { status: 429, headers: { ...plain, "Retry-After": String(check.lockedFor) } });
+            }
+            return new Response("Wrong passphrase. Go back and start the connection again.", { status: 403, headers: plain });
+          }
+          signIn = await sessionCookie(env.OWNER_PASSPHRASE);
         }
         const agent = String(form.get("agent") ?? "");
         if (!/^[a-z0-9-]{2,32}$/.test(agent)) return new Response("Invalid agent name.", { status: 400 });
-        const categories = form.getAll("category").map(String).filter(isCategory);
+        const known = await listCategories(makeStore(env));
+        const categories = form.getAll("category").map(String).filter((c) => known.includes(c));
 
         const approved = await oauth.approveConsent(request, handle, { scope: ["mcp:read"] });
         const { redirectTo } = await oauth.completeAuthorization({
@@ -319,6 +339,7 @@ ${details.redirectIsLoopback ? "<p><strong>This sends access to an app on your c
           props: { agent, categories, inlineApproval: form.get("inline") === "on", authorizedAt: new Date().toISOString() },
         });
         approved.headers.set("Location", redirectTo);
+        if (signIn) approved.headers.append("Set-Cookie", signIn);
         return new Response(null, { status: 302, headers: approved.headers });
       }
 

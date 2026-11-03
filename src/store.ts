@@ -11,6 +11,7 @@ export interface Store {
   // Writes only if the file is still at `sha` (null: must not exist). Returns false on a conflict.
   write(path: string, content: string, sha: string | null, message: string): Promise<boolean>;
   remove(path: string, sha: string, message: string): Promise<void>;
+  // Paths of the files directly in `dir` ("" for the root), not in its subdirectories.
   list(dir: string): Promise<string[]>;
 }
 
@@ -48,15 +49,21 @@ function kvStore(kv: KVNamespace): Store {
       await kv.delete(key(path));
     },
     async list(dir) {
-      const { keys } = await kv.list({ prefix: key(`${dir}/`) });
-      return keys.map((k) => k.name.slice("file:".length));
+      const prefix = dir ? `${dir}/` : "";
+      const { keys } = await kv.list({ prefix: key(prefix) });
+      return keys.map((k) => k.name.slice("file:".length)).filter((path) => !path.slice(prefix.length).includes("/"));
     },
   };
 }
 
+// The token expiry GitHub sent on the latest response ("" for none, null before any call),
+// so owner pages can warn without an extra request.
+let tokenExpiry: string | null = null;
+export const lastTokenExpiry = () => tokenExpiry;
+
 function githubStore(token: string, repo: string): Store {
-  const api = (path: string, init: RequestInit = {}) =>
-    fetch(`https://api.github.com/repos/${repo}/contents/${path}`, {
+  const api = async (path: string, init: RequestInit = {}) => {
+    const res = await fetch(`https://api.github.com/repos/${repo}/contents/${path}`, {
       ...init,
       headers: {
         Authorization: `Bearer ${token}`,
@@ -66,6 +73,9 @@ function githubStore(token: string, repo: string): Store {
         ...init.headers,
       },
     });
+    if (res.status !== 401) tokenExpiry = res.headers.get("github-authentication-token-expiration") ?? "";
+    return res;
+  };
   const toBase64 = (text: string) => btoa(String.fromCharCode(...new TextEncoder().encode(text)));
   const fromBase64 = (b64: string) => new TextDecoder().decode(Uint8Array.from(atob(b64.replace(/\n/g, "")), (c) => c.charCodeAt(0)));
 
