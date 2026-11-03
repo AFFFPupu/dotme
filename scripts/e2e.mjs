@@ -11,6 +11,20 @@ const agent = process.argv[4] ?? "e2e-test";
 const redirectUri = "http://localhost:9999/callback";
 const b64url = (buf) => buf.toString("base64url");
 
+// Setup status: JSON for agents, a page for browsers, never a secret.
+const status = await (await fetch(`${base}/setup/status`)).json();
+const statusOf = Object.fromEntries(status.checks.map((c) => [c.id, c.status]));
+console.log("setup status:", status.ok, statusOf);
+assert.equal(status.ok, true);
+assert.deepEqual(
+  { passphrase: statusOf.owner_passphrase, resource: statusOf.mcp_resource, kv: statusOf.kv, storage: statusOf.storage },
+  { passphrase: "ok", resource: "ok", kv: "ok", storage: "ok" }
+);
+assert.ok(!JSON.stringify(status).includes(passphrase), "setup status leaks the passphrase");
+const statusPage = await fetch(`${base}/setup/status`, { headers: { Accept: "text/html" } });
+assert.match(statusPage.headers.get("content-type"), /text\/html/);
+assert.ok((await statusPage.text()).includes("dotme setup status"));
+
 const meta = await (await fetch(`${base}/.well-known/oauth-authorization-server`)).json();
 const unauth = await fetch(`${base}/mcp`, { method: "POST" });
 console.log("unauthenticated /mcp:", unauth.status, unauth.headers.get("www-authenticate"));

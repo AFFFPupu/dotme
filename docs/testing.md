@@ -152,7 +152,12 @@ curl -sS <url>/                                         # prints: dotme
 curl -sS <url>/.well-known/oauth-authorization-server | head -c 200; echo
 curl -sS -o /dev/null -w '%{http_code}\n' <url>/mcp     # 401: OAuth required
 curl -sS -o /dev/null -w '%{http_code}\n' <url>/export  # 401: token required
+curl -sS <url>/setup/status                             # every check ok, or a fix for each one that is not
 ```
+
+Pass: `/setup/status` says `"ok": true`. `passkey` stays `warn` until section 4,
+and `export_token` until 5.1 if you have not set it yet. Open the same URL in a
+browser for the readable page.
 
 If anything is off, `npm run wrangler -- tail` streams the Worker's logs.
 
@@ -475,4 +480,4 @@ release blockers; note in the table whether connecting and `whoami` work.
 | `whoami` in Claude Code says `claude-ai` | The claude.ai connector shadows the plugin's server; disable `claude.ai dotme` in `/mcp` (5.2). |
 | The agent stops and asks for evidence | `evidence` is under 10 characters. Say what you said or did, and when. |
 | Codex loads no preferences | Codex 0.164 and later removed plugin hooks; install the manual hook (6.1). |
-| Approval fails with a GitHub error | `GITHUB_TOKEN` expired or lacks Contents write on `<data-repo>`; set a new one with `npm run wrangler -- secret put GITHUB_TOKEN`. |
+| Approval fails with a GitHub error | `GITHUB_TOKEN` expired or lacks Contents write on `<data-repo>`; `<url>/setup/status` says which. Set a new one with `npm run wrangler -- secret put GITHUB_TOKEN`. |

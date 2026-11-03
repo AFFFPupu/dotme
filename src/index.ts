@@ -16,6 +16,7 @@ import { hasPasskeys, PASSKEY_SCRIPT } from "./passkeys";
 import { approve, getPreferences, listCategories, listPending, propose } from "./dotme";
 import { CATEGORY_NAME, DEFAULT_CATEGORIES, cleanLine, isCategoryName } from "./prefs";
 import type { Category, Preference } from "./prefs";
+import { setupStatus } from "./setup";
 import { makeStore } from "./store";
 import type { StoreEnv } from "./store";
 
@@ -256,6 +257,8 @@ async function exportPreferences(request: Request, env: Env): Promise<Response> 
 
 const AuthHandler = {
   async fetch(request: Request, env: Env): Promise<Response> {
+    // Before the passphrase check: the status page is how a new install finds out what is missing.
+    if (new URL(request.url).pathname === "/setup/status") return setupStatus(request, env);
     if (!env.OWNER_PASSPHRASE) return new Response("Server has no OWNER_PASSPHRASE set.", { status: 503 });
     const path = new URL(request.url).pathname;
     if (path === "/export" || path === "/export/collab.md") return exportPreferences(request, env);
