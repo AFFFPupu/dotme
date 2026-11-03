@@ -26,7 +26,8 @@ export function memoryStore() {
       messages.push(message);
     },
     async list(dir) {
-      return [...files.keys()].filter((path) => path.startsWith(`${dir}/`));
+      const prefix = dir ? `${dir}/` : "";
+      return [...files.keys()].filter((path) => path.startsWith(prefix) && !path.slice(prefix.length).includes("/"));
     },
   };
   return store;

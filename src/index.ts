@@ -11,8 +11,8 @@ import { env as workerEnv } from "cloudflare:workers";
 import { z } from "zod";
 import { escape, handleApprovalPages, hasSession, html, samePassphrase } from "./pages";
 import { hasPasskeys, PASSKEY_SCRIPT } from "./passkeys";
-import { approve, getPreferences, isCategory, listPending, propose } from "./dotme";
-import { CATEGORIES, cleanLine } from "./prefs";
+import { approve, getPreferences, listCategories, listPending, propose } from "./dotme";
+import { CATEGORY_NAME, DEFAULT_CATEGORIES, cleanLine, isCategoryName } from "./prefs";
 import type { Category, Preference } from "./prefs";
 import { makeStore } from "./store";
 import type { StoreEnv } from "./store";
@@ -36,8 +36,8 @@ Propose a change only after asking the user in conversation, with specific evide
 ask whether it applies only in some situations and propose it with "when" instead of
 replacing the old one.`;
 
-// What each category is for, shown on the consent page.
-const CATEGORY_HINTS: Record<Category, string> = {
+// What the default categories are for, shown on the consent page.
+const CATEGORY_HINTS: Record<string, string> = {
   collab: "how to work and talk with you",
   coding: "stack, tools and code style",
   life: "personal facts such as timezone",
@@ -53,8 +53,9 @@ const text = (value: unknown) => ({ content: [{ type: "text" as const, text: typ
 
 function caller(): { agent: string; categories: readonly Category[]; inlineApproval: boolean } {
   const props = getMcpAuthContext()?.props ?? {};
-  // Grants made before category access existed see every category.
-  const categories = Array.isArray(props.categories) ? (props.categories as unknown[]).filter(isCategory) : CATEGORIES;
+  // Grants record the categories ticked on the consent page, so categories added later stay hidden
+  // until the owner re-authorizes. Grants made before categories were recorded see the defaults.
+  const categories = Array.isArray(props.categories) ? (props.categories as unknown[]).filter(isCategoryName) : DEFAULT_CATEGORIES;
   return { agent: String(props.agent ?? "unknown"), categories, inlineApproval: props.inlineApproval === true };
 }
 
@@ -101,7 +102,8 @@ function allowed(category: Category) {
 function createServer() {
   const server = new McpServer({ name: "dotme", version: "0.1.0" }, { instructions: INSTRUCTIONS });
   const store = makeStore(env);
-  const category = z.enum(CATEGORIES);
+  // Categories are files in the store, so the schema checks the name; allowed() checks access.
+  const category = z.string().regex(CATEGORY_NAME).describe("A category this connection can access, from list_categories.");
 
   server.registerTool(
     "whoami",
@@ -237,12 +239,13 @@ async function exportPreferences(request: Request, env: Env): Promise<Response> 
 
   const asked = url.searchParams.get("categories");
   const names = asked === null ? [...DEFAULT_EXPORT] : [...new Set(asked.split(",").map((c) => c.trim()).filter(Boolean))];
-  const unknown = names.filter((c) => !isCategory(c));
+  const known = await listCategories(store);
+  const unknown = names.filter((c) => !known.includes(c));
   if (names.length === 0 || unknown.length > 0) {
-    return markdown(`Unknown category: ${unknown.join(", ") || "(none given)"}. Known: ${CATEGORIES.join(", ")}.\n`, 400);
+    return markdown(`Unknown category: ${unknown.join(", ") || "(none given)"}. Known: ${known.join(", ")}.\n`, 400);
   }
   const sections = await Promise.all(
-    (names as Category[]).map(async (c) => `## ${c}\n\n${formatPrefs(await getPreferences(store, c)) || "(none yet)"}`)
+    names.map(async (c) => `## ${c}\n\n${formatPrefs(await getPreferences(store, c)) || "(none yet)"}`)
   );
   return markdown(`${sections.join("\n\n")}\n`);
 }
@@ -268,8 +271,8 @@ const AuthHandler = {
           ? `Published by <strong>${escape(details.clientDomain)}</strong>.`
           : "This app registered itself; its name is not verified.";
         const signedIn = await hasSession(request, env.OWNER_PASSPHRASE);
-        const boxes = CATEGORIES.map(
-          (c) => `<label><input type="checkbox" name="category" value="${c}" checked> <strong>${c}</strong>: ${CATEGORY_HINTS[c]}</label><br>`
+        const boxes = (await listCategories(makeStore(env))).map(
+          (c) => `<label><input type="checkbox" name="category" value="${escape(c)}" checked> <strong>${escape(c)}</strong>${CATEGORY_HINTS[c] ? `: ${CATEGORY_HINTS[c]}` : ""}</label><br>`
         ).join("\n");
         // Apps on this computer (Claude Code, Codex) can show their own approval dialog; web apps use the link.
         const inline = details.redirectIsLoopback ? " checked" : "";
@@ -308,7 +311,8 @@ ${details.redirectIsLoopback ? "<p><strong>This sends access to an app on your c
         }
         const agent = String(form.get("agent") ?? "");
         if (!/^[a-z0-9-]{2,32}$/.test(agent)) return new Response("Invalid agent name.", { status: 400 });
-        const categories = form.getAll("category").map(String).filter(isCategory);
+        const known = await listCategories(makeStore(env));
+        const categories = form.getAll("category").map(String).filter((c) => known.includes(c));
 
         const approved = await oauth.approveConsent(request, handle, { scope: ["mcp:read"] });
         const { redirectTo } = await oauth.completeAuthorization({
