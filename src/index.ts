@@ -316,7 +316,7 @@ ${details.redirectIsLoopback ? "<p><strong>This sends access to an app on your c
   <p>It may read and propose changes to:<br>${boxes}</p>
   <p><label><input type="checkbox" name="inline"${inline}> Approve changes in this app's own dialog. Leave it off for apps you do not fully trust; you then approve on a link. Apps that cannot show a dialog use the link anyway.</label></p>
   ${owner}
-  <p><button name="decision" value="approve">Allow</button> <button name="decision" value="deny" formnovalidate>Deny</button></p>
+  <p><button name="decision" value="approve">Allow</button> <button name="decision" value="deny" formnovalidate class="secondary">Deny</button></p>
 </form>`,
           consent.headers
         );

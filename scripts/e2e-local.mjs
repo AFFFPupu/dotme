@@ -1,6 +1,6 @@
 // Start a throwaway `wrangler dev` with KV storage and fresh state, run the
 // end-to-end scripts against it (OAuth, approvals, elicitation, export, the
-// SessionStart hook and categories), then stop it. This is what CI runs.
+// SessionStart hook, categories and the approval page), then stop it. This is what CI runs.
 // Usage: node scripts/e2e-local.mjs [port]
 import { execFileSync, spawn } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -62,7 +62,7 @@ try {
   if (!(await waitForServer())) {
     console.error(`wrangler dev did not start on ${base}:\n${log}`);
   } else {
-    code = (await run("scripts/e2e.mjs")) || (await run("scripts/elicit.mjs")) || (await run("scripts/export.mjs", exportToken)) || (await run("scripts/categories.mjs", passphrase, exportToken)) ||
+    code = (await run("scripts/e2e.mjs")) || (await run("scripts/elicit.mjs")) || (await run("scripts/export.mjs", exportToken)) || (await run("scripts/categories.mjs", passphrase, exportToken)) || (await run("scripts/approvals.mjs")) ||
       // Last, because it locks this address out of passphrase sign-in for 15 minutes.
       (await run("scripts/ratelimit.mjs"));
     if (code) console.error(`\nwrangler dev log:\n${log}`);
