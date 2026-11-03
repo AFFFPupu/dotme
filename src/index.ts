@@ -369,6 +369,9 @@ export default new OAuthProvider({
   scopesSupported: ["mcp:read"],
   requiredScopes: ["mcp:read"],
   clientIdMetadataDocumentEnabled: true,
+  // Grok Bot signs in through Cursor's OAuth client, which uses cursor://anysphere.cursor-mcp/oauth/callback.
+  // The owner still sees the destination on the consent page and must sign in; PKCE protects the code.
+  allowPrivateUseRedirectUris: true,
   resourceMetadata: { resource: env.MCP_RESOURCE },
   // OAuth errors carry the failed check only in `internal`; log it so connection problems can be diagnosed.
   onError({ code, status, internal }) {

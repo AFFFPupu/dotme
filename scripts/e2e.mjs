@@ -132,6 +132,11 @@ let consentPage = "";
 await getToken(base, passphrase, "signed-in-test", { session, onPage: (html) => (consentPage = html) });
 console.log("consent page when signed in: no passphrase field", !consentPage.includes('name="passphrase"'), "| suggested name", /name="agent"[^>]*value="test"/.test(consentPage), "| dialog pre-ticked for a local app", /name="inline" checked/.test(consentPage));
 assert.ok(!consentPage.includes('name="passphrase"') && /name="agent"[^>]*value="test"/.test(consentPage) && /name="inline" checked/.test(consentPage));
+// Grok Bot connects through Cursor's OAuth client, whose callback is a private-use URI scheme.
+let cursorPage = "";
+await getToken(base, passphrase, "grok-bot", { session, redirectUri: "cursor://anysphere.cursor-mcp/oauth/callback", onPage: (html) => (cursorPage = html) });
+console.log("cursor:// callback connects, consent names it:", cursorPage.includes("anysphere.cursor-mcp"), "| dialog not pre-ticked", !/name="inline" checked/.test(cursorPage));
+assert.ok(cursorPage.includes("anysphere.cursor-mcp") && !/name="inline" checked/.test(cursorPage));
 const approvalPage = await (await fetch(`${base}/approve/${id}`, { headers: { Cookie: session } })).text();
 console.log("approval page shows diff:", approvalPage.includes("Prefer Cloudflare over Supabase"), approvalPage.includes("e2e test"));
 assert.ok(approvalPage.includes("Prefer Cloudflare over Supabase") && approvalPage.includes("e2e test"));

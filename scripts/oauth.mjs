@@ -3,8 +3,8 @@ import { createHash, randomBytes } from "node:crypto";
 
 // With `session` (an owner_session cookie), the consent form is sent without the passphrase;
 // `onPage` receives the consent page's HTML; `categories` are the boxes to tick.
-export async function getToken(base, passphrase, agent, { inline = false, session, onPage, categories = ["collab", "coding", "life"] } = {}) {
-  const redirectUri = "http://localhost:9999/callback";
+// `redirectUri` sets the callback the test client registers.
+export async function getToken(base, passphrase, agent, { inline = false, session, onPage, categories = ["collab", "coding", "life"], redirectUri = "http://localhost:9999/callback" } = {}) {
   const meta = await (await fetch(`${base}/.well-known/oauth-authorization-server`)).json();
   const client = await (await fetch(meta.registration_endpoint, {
     method: "POST",
