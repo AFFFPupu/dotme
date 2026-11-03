@@ -9,7 +9,7 @@ last copy it fetched.
 
 | | Claude Code | Codex |
 |---|---|---|
-| SessionStart hook | in the plugin | a manual `~/.codex/hooks.json` entry (Codex 0.164 and later removed plugin hooks) |
+| SessionStart hook | in the plugin | `npm run codex:hook` adds it to `~/.codex/hooks.json` (Codex 0.164 and later removed plugin hooks) |
 | MCP connection | in the plugin | one `codex mcp add` command |
 | Approval dialog in the client | yes | not yet, see below |
 
@@ -90,20 +90,29 @@ when" field. **Accept** saves it. **Decline** or closing the dialog keeps it
 pending with a link to the approval page, where you approve or reject it.
 
 **If you also use dotme on claude.ai.** Claude Code syncs your claude.ai
-connectors in. The synced `claude.ai dotme` has the same URL as the plugin's
-server and wins, so the session acts as your `claude-ai` agent and gets links
-instead of the dialog (`whoami` shows it). Run `/mcp`, pick
-`claude.ai dotme` and choose Disable. Claude Code remembers this per
-directory.
+connectors in, and it hides a plugin's MCP server when a claude.ai connector
+has the same URL. The session then acts as your `claude-ai` agent and gets
+links instead of the dialog (`whoami` shows it). A server you add yourself
+wins over both, so add dotme once by hand:
+
+```bash
+claude mcp add --transport http --scope user dotme https://<worker>/mcp
+```
+
+Claude Code then hides the synced `claude.ai dotme` and the plugin's copy,
+and uses this one, in every directory. Connect it in `/mcp` as above, with
+the agent name `claude-code`. The plugin still loads your preferences at
+session start. Without a claude.ai connector you do not need this step.
 
 To change which categories the hook loads, run
 `/plugin configure dotme@dotme`, or reinstall with
 `--config categories=collab,coding,life`.
 
 **Upgrading from the old hook.** If `~/.claude/settings.json` has a
-`SessionStart` hook that runs `~/.config/dotme/sync.sh`, remove that entry,
-and remove a `dotme` MCP server you added by hand (`claude mcp remove dotme
--s user`), so preferences are not loaded twice. The plugin reuses
+`SessionStart` hook that runs `~/.config/dotme/sync.sh`, remove that entry
+so preferences are not loaded twice. Keep a `dotme` MCP server you added by
+hand if you also use the claude.ai connector (see above); otherwise you can
+remove it (`claude mcp remove dotme -s user`). The plugin reuses
 `~/.config/dotme/url` and `~/.config/dotme/auth-header`.
 
 ## 3. Codex
@@ -115,27 +124,30 @@ codex plugin marketplace add <repo>
 Install and enable `dotme` from that marketplace in `/plugins`.
 
 **Add the hook by hand.** Codex 0.164 and later list `plugin_hooks` as
-removed, so the hook inside the plugin does not run. Copy it out:
+removed, so the hook inside the plugin does not run. Run this in your dotme
+checkout:
 
 ```bash
-cp clients/shared/session-start.sh ~/.config/dotme/session-start.sh
+npm run codex:hook
 ```
 
-and add it to `~/.codex/hooks.json` (merge it in if the file exists):
+It copies `shared/session-start.sh` to `~/.config/dotme/session-start.sh`
+and merges one SessionStart entry into `~/.codex/hooks.json`. It keeps every
+other hook in that file, never adds a second dotme entry, refuses to touch a
+file that is not valid JSON, and backs the file up first
+(`hooks.json.bak-dotme-<time>`). It reads and prints no token. Check it, or
+take it out again, with:
 
-```json
-{
-  "hooks": {
-    "SessionStart": [
-      { "hooks": [{ "type": "command", "command": "sh ~/.config/dotme/session-start.sh" }] }
-    ]
-  }
-}
+```bash
+npm run codex:hook -- --check
+npm run codex:hook -- --remove
 ```
 
-Codex asks you to review and trust the hook in the next session. The plugin
-keeps its own copy of the hook for Codex builds that still run plugin hooks;
-use one or the other, not both, or preferences load twice.
+`--dry-run` prints the file it would write. Run `npm run codex:hook` again
+after updating dotme to refresh the copied script. Codex asks you to review
+and trust the hook in the next session. If a later Codex runs plugin hooks
+again, keep only one of the two (`--remove` drops the manual one), or
+preferences load twice.
 
 Connect the MCP server; the URL is yours, so it is not in the plugin:
 

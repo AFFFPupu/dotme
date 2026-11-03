@@ -89,6 +89,22 @@ function logApprovalPath(agent: string, inlineApproval: boolean, envelope: Recor
   );
 }
 
+// One log line when the client answers the dialog, so `wrangler tail` also shows a client that was
+// asked but declined or cancelled on its own (for example a headless run, or an approval policy that
+// auto-declines elicitations), which otherwise looks the same as no dialog at all. Never logs the answer's content.
+function logDialogAnswer(agent: string, response: ReturnType<typeof inputResponse>, envelope: Record<string, unknown> | undefined) {
+  console.log(
+    JSON.stringify({
+      dialogAnswer: {
+        agent,
+        kind: response.kind,
+        action: response.kind === "elicit" ? response.action : null,
+        stillDeclaresElicitation: clientCanElicit(envelope),
+      },
+    })
+  );
+}
+
 // Accept saves. Decline or dismissing keeps it pending with a link, where the owner can reject it:
 // clients with no window to show the dialog in decline on their own, and that must not drop a proposal. The form only asks for an optional scope.
 const approvalSchema = z.object({
@@ -163,6 +179,7 @@ function createServer() {
       const responses = context.mcpReq.inputResponses as Record<string, unknown> | undefined;
       const response = inputResponse(responses, "approval");
       if (response.kind === "missing") logApprovalPath(agent, inlineApproval, envelope);
+      else logDialogAnswer(agent, response, envelope);
       if (inlineApproval && clientCanElicit(envelope)) {
         if (response.kind === "missing") {
           const current = input.replaces ? (await getPreferences(store, input.category)).find((p) => p.id === input.replaces) : undefined;

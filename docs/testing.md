@@ -237,15 +237,16 @@ So preferences are not loaded twice:
 
 - If `~/.claude/settings.json` has a `SessionStart` hook running
   `~/.config/dotme/sync.sh`, delete that entry.
-- If you added the MCP server by hand, remove it:
+- If you added dotme as a connector on claude.ai, Claude Code syncs it in as
+  `claude.ai dotme` and hides the plugin's server, which has the same URL.
+  That connection is named `claude-ai` and cannot show the dialog. A server
+  added by hand wins over both, so keep (or add) one:
+  `claude mcp add --transport http --scope user dotme <url>/mcp`.
+  Pass, after 5.4: `/mcp` lists `dotme` as connected, and `whoami` says
+  `claude-code`.
+- Without a claude.ai connector, remove an MCP server you added by hand:
   `claude mcp list`, then `claude mcp remove dotme -s user` (or the scope it
   shows).
-- If you added dotme as a connector on claude.ai, Claude Code syncs it in as
-  `claude.ai dotme`, with the same URL as the plugin's server, and uses it
-  instead. That connection is named `claude-ai` and cannot show the dialog.
-  After 5.4, run `/mcp`, pick `claude.ai dotme` and choose Disable. Claude
-  Code remembers this per directory, so repeat it in each project, or remove
-  the connector from claude.ai if you only use dotme in Claude Code.
 
 ### 5.3 Install the plugin from main
 
@@ -356,20 +357,12 @@ never runs there. Install the hook by hand (check with
 `codex features list | grep plugin_hooks`; skip this only if it is on):
 
 ```bash
-cp clients/shared/session-start.sh ~/.config/dotme/session-start.sh
+npm run codex:hook
+npm run codex:hook -- --check
 ```
 
-`~/.codex/hooks.json` (merge into it if the file exists):
-
-```json
-{
-  "hooks": {
-    "SessionStart": [
-      { "hooks": [{ "type": "command", "command": "sh ~/.config/dotme/session-start.sh" }] }
-    ]
-  }
-}
-```
+Pass: the check prints `ok:`. Running `npm run codex:hook` a second time
+prints `not changed`, and other hooks in `~/.codex/hooks.json` are kept.
 
 **Human only:** the next session asks you to review and trust the hook;
 trust it.
@@ -421,6 +414,14 @@ while proposing. Each proposal logs one line such as
 dialog option: reconnect and tick it. `protocolVersion: null` or no
 `elicitation` in `clientCapabilities` means Codex did not send the newer
 protocol, so it is a Codex limit; note it in the table.
+
+When the first line shows `"dialog":true`, Codex was asked to show the
+dialog. A second line, `{"dialogAnswer":{...}}`, then says what Codex
+answered: `"action":"decline"` or `"cancel"` without you seeing a dialog
+means Codex answered on its own. Check `codex features list` for
+`tool_call_mcp_elicitation`, and that `approval_policy` in
+`~/.codex/config.toml` is not `never` and does not turn off
+`mcp_elicitations`; note what you find in the table.
 
 ### 6.5 Clean up
 
@@ -476,8 +477,8 @@ release blockers; note in the table whether connecting and `whoami` work.
 | Hook says `the export token was refused (HTTP 401)` | `~/.config/dotme/auth-header` does not match the server's `EXPORT_TOKEN`; redo 5.1. Setting a new token on one machine breaks the old one on others; copy the two files instead. |
 | Hook says `not set up on this machine` | `~/.config/dotme/url` or `auth-header` is missing. |
 | Preferences load twice | The old `sync.sh` hook or a hand-added MCP server is still configured; see 5.2. |
-| No dialog, only a link | The connection was authorized without the dialog option (reconnect with it ticked); in Claude Code, the synced `claude.ai dotme` connector is used instead of the plugin (5.2); in Codex, `mcp_2026_07_28` is off or not sent (6.4). `npm run wrangler -- tail` shows which. |
-| `whoami` in Claude Code says `claude-ai` | The claude.ai connector shadows the plugin's server; disable `claude.ai dotme` in `/mcp` (5.2). |
+| No dialog, only a link | The connection was authorized without the dialog option (reconnect with it ticked); in Claude Code, the synced `claude.ai dotme` connector hides the plugin's server (5.2); in Codex, `mcp_2026_07_28` is off or not sent (6.4). `npm run wrangler -- tail` shows which. |
+| `whoami` in Claude Code says `claude-ai` | The claude.ai connector hides the plugin's server; add dotme by hand with `claude mcp add` (5.2). |
 | The agent stops and asks for evidence | `evidence` is under 10 characters. Say what you said or did, and when. |
 | Codex loads no preferences | Codex 0.164 and later removed plugin hooks; install the manual hook (6.1). |
 | Approval fails with a GitHub error | `GITHUB_TOKEN` expired or lacks Contents write on `<data-repo>`; `<url>/setup/status` says which. Set a new one with `npm run wrangler -- secret put GITHUB_TOKEN`. |
