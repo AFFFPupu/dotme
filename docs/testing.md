@@ -238,13 +238,12 @@ So preferences are not loaded twice:
 - If `~/.claude/settings.json` has a `SessionStart` hook running
   `~/.config/dotme/sync.sh`, delete that entry.
 - If you added dotme as a connector on claude.ai, Claude Code syncs it in as
-  `claude.ai dotme` and hides the plugin's server, which has the same URL.
-  That connection is named `claude-ai` and cannot show the dialog. A server
-  added by hand wins over both, so keep (or add) one:
+  `claude.ai dotme`. Current versions hide it because the plugin's server has
+  the same URL. Pass, after 5.4: `/mcp` shows `claude.ai dotme` as hidden
+  (same URL as `plugin:dotme:dotme`), and `whoami` says `claude-code`. If
+  `whoami` says `claude-ai` instead, add dotme by hand, which wins over both:
   `claude mcp add --transport http --scope user dotme <url>/mcp`.
-  Pass, after 5.4: `/mcp` lists `dotme` as connected, and `whoami` says
-  `claude-code`.
-- Without a claude.ai connector, remove an MCP server you added by hand:
+- Otherwise, remove an MCP server you added by hand:
   `claude mcp list`, then `claude mcp remove dotme -s user` (or the scope it
   shows).
 
@@ -478,7 +477,7 @@ release blockers; note in the table whether connecting and `whoami` work.
 | Hook says `not set up on this machine` | `~/.config/dotme/url` or `auth-header` is missing. |
 | Preferences load twice | The old `sync.sh` hook or a hand-added MCP server is still configured; see 5.2. |
 | No dialog, only a link | The connection was authorized without the dialog option (reconnect with it ticked); in Claude Code, the synced `claude.ai dotme` connector hides the plugin's server (5.2); in Codex, `mcp_2026_07_28` is off or not sent (6.4). `npm run wrangler -- tail` shows which. |
-| `whoami` in Claude Code says `claude-ai` | The claude.ai connector hides the plugin's server; add dotme by hand with `claude mcp add` (5.2). |
+| `whoami` in Claude Code says `claude-ai` | This Claude Code version lets the claude.ai connector hide the plugin's server; add dotme by hand with `claude mcp add` (5.2). |
 | The agent stops and asks for evidence | `evidence` is under 10 characters. Say what you said or did, and when. |
 | Codex loads no preferences | Codex 0.164 and later removed plugin hooks; install the manual hook (6.1). |
 | Approval fails with a GitHub error | `GITHUB_TOKEN` expired or lacks Contents write on `<data-repo>`; `<url>/setup/status` says which. Set a new one with `npm run wrangler -- secret put GITHUB_TOKEN`. |
