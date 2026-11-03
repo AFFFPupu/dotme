@@ -4,3 +4,6 @@ node_modules/
 # This install's own values (see dotme.config.example.json) and the config generated from them.
 dotme.config.json
 wrangler.deploy.jsonc
+# Scratch output of docs/media/source.
+docs/media/source/*-frames/
+docs/media/source/pal.png
