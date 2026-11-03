@@ -11,6 +11,7 @@ export interface Store {
   // Writes only if the file is still at `sha` (null: must not exist). Returns false on a conflict.
   write(path: string, content: string, sha: string | null, message: string): Promise<boolean>;
   remove(path: string, sha: string, message: string): Promise<void>;
+  // Paths of the files directly in `dir` ("" for the root), not in its subdirectories.
   list(dir: string): Promise<string[]>;
 }
 
@@ -48,8 +49,9 @@ function kvStore(kv: KVNamespace): Store {
       await kv.delete(key(path));
     },
     async list(dir) {
-      const { keys } = await kv.list({ prefix: key(`${dir}/`) });
-      return keys.map((k) => k.name.slice("file:".length));
+      const prefix = dir ? `${dir}/` : "";
+      const { keys } = await kv.list({ prefix: key(prefix) });
+      return keys.map((k) => k.name.slice("file:".length)).filter((path) => !path.slice(prefix.length).includes("/"));
     },
   };
 }

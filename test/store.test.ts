@@ -33,14 +33,16 @@ describe("KV store", () => {
     expect((await store.read("coding.md"))!.content).toBe("two");
   });
 
-  it("lists only files under the directory", async () => {
+  it("lists only files directly in the directory", async () => {
     const kv = fakeKV();
     const store = makeStore({ STORAGE: "kv", OAUTH_KV: kv });
     kv.data.set("grant:x", "oauth data");
     await store.write("coding.md", "c", null, "");
     await store.write("pending/q-1.json", "{}", null, "");
     await store.write("pending/q-2.json", "{}", null, "");
+    await store.write("pending/old/q-0.json", "{}", null, "");
     expect((await store.list("pending")).sort()).toEqual(["pending/q-1.json", "pending/q-2.json"]);
+    expect(await store.list("")).toEqual(["coding.md"]);
     await store.remove("pending/q-1.json", "", "");
     expect(await store.list("pending")).toEqual(["pending/q-2.json"]);
     expect(await store.read("missing.md")).toBeNull();

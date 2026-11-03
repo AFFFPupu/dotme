@@ -26,7 +26,7 @@ almost always.
 | Plugin install (Claude Code) | Server URL | Your dotme URL, `https://<worker>`. |
 | Plugin install (Claude Code) | Categories loaded at session start | Keep `collab,coding`. This only controls what is copied into each new session; add `life` if you want it there too. |
 | Consent page | Agent name | Pre-filled from the app's name. Use a short stable name such as `claude-code` or `codex`; it is stamped on every proposal from this app. |
-| Consent page | Categories | Keep all ticked unless you want to hide one from this app. This controls what the app may read and propose to through MCP. |
+| Consent page | Categories | Keep all ticked unless you want to hide one from this app. This controls what the app may read and propose to through MCP. A category you add later (a new `.md` file in the data repo) stays hidden from this app until you connect it again and tick it. |
 | Consent page | Approve in this app's own dialog | Pre-ticked for apps on your computer (Claude Code, Codex), off for web apps. An app that cannot show a dialog gets a link anyway. Untick it for an app you do not fully trust. |
 | Consent page | Passphrase | Not asked when you are already signed in to `/approve` in this browser. Otherwise sign in with your passkey, or type the passphrase. |
 | First tool call in the client | Allow dotme's tools | "Yes, and don't ask again" (or Codex's equivalent). Reading is harmless, and a proposal saves nothing until you approve it. |
