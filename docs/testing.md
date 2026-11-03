@@ -296,8 +296,8 @@ Pass: `claude plugin list` shows `dotme` enabled. Optional:
 
 In a session:
 
-The dialog has an optional "only applies when" field and the client's own
-buttons: **Accept** saves the change; **Decline** or closing the dialog
+The dialog shows the change, its scope and the evidence, with no fields to
+fill in, and the client's own buttons: **Accept** saves the change as shown; **Decline** or closing the dialog
 (Escape) keeps it pending with a link, where you approve or reject it. A
 client with no window for the dialog (such as `claude -p`) declines by
 itself, so nothing is lost there.

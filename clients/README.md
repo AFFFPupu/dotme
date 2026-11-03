@@ -85,9 +85,10 @@ Then connect the MCP server once: run `/mcp`, pick `plugin:dotme:dotme`,
 and Allow on the consent page with the agent name `claude-code`. Start a new
 session; it opens with your preferences.
 
-The dialog shows the change and the evidence, with an optional "only applies
-when" field. **Accept** saves it. **Decline** or closing the dialog keeps it
-pending with a link to the approval page, where you approve or reject it.
+The dialog shows the change, its scope ("always" or "only when ...") and the
+evidence. **Accept** saves it as shown. **Decline** or closing the dialog
+keeps it pending with a link to the approval page, where you can change the
+scope, approve or reject it.
 
 **If you also use dotme on claude.ai.** Claude Code syncs your claude.ai
 connectors in. Current versions see that the synced `claude.ai dotme` has
@@ -167,9 +168,9 @@ mcp_2026_07_28 = true
 
 Tested with Codex 0.166: the dialog appears, Accept saves, and the agent
 reports "approved and saved". Its `tool_call_mcp_elicitation` feature must be
-on, which it is by default (`codex features list`). Known issue: in Warp,
-Enter did nothing while the optional "only applies when" field was empty.
-Type the scope you want, or Decline and approve on the link. Without the
+on, which it is by default (`codex features list`). The dialog has no
+fields, so Enter accepts. (It used to have an optional "only applies when"
+field, and in Warp Enter did nothing while it was empty.) Without the
 flag the agent gives you a link to the approval page instead, which works
 the same. To see what Codex sends, run `npm run wrangler -- tail` while it
 proposes: each proposal logs the protocol version and client capabilities,
