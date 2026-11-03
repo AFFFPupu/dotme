@@ -7,7 +7,7 @@ import { authenticate, authenticationOptions, hasPasskeys, PASSKEY_SCRIPT, regis
 import { checkPassphrase, lockMessage } from "./ratelimit";
 import type { Store } from "./store";
 import { lastTokenExpiry } from "./store";
-import { escape, html } from "./html";
+import { escape, html, say } from "./html";
 import { expiryWarning, parseTokenExpiry } from "./setup";
 
 export { escape, html };
@@ -53,12 +53,12 @@ function sameOrigin(request: Request): boolean {
 }
 
 function signInPage(passkeys: boolean, error?: string, status = 403): Response {
-  return html(`<title>Sign in</title><h1>dotme</h1>
-${error ? `<p><strong>${escape(error)}</strong></p>` : ""}
+  return html(`<title>Sign in</title><h1>Sign in</h1>
+${say(error ? `<p><strong>${escape(error)}</strong></p>` : "<p>Only you can approve changes to your preferences. Sign in to see what your agents proposed.</p>", error ? "oops" : "idle")}
 ${passkeys ? `<p><button onclick="passkey('login')">Sign in with passkey</button></p><p>or use the passphrase:</p>${PASSKEY_SCRIPT}` : ""}
 <form method="post"><input type="hidden" name="action" value="signin">
 <p><label>Passphrase <input name="passphrase" type="password" required autofocus></label></p>
-<p><button>Sign in</button></p></form>`, new Headers(), error ? status : 200);
+<p class="actions"><button>Sign in</button></p></form>`, new Headers(), error ? status : 200);
 }
 
 export async function sessionCookie(passphrase: string): Promise<string> {
@@ -121,7 +121,7 @@ export async function handleApprovalPages(request: Request, passphrase: string, 
   }
 
   const found = await getProposal(store, id);
-  if (!found) return html(`<title>Already handled</title>${offer}<h1>Already handled</h1><p>This proposal was approved, rejected or never existed.</p><p><a href="/approve">All pending</a></p>`, new Headers(), 404);
+  if (!found) return html(`<title>Already handled</title>${offer}<h1>Already handled</h1>${say("<p>This proposal was approved, rejected or never existed.</p>")}<p><a href="/approve">All pending</a></p>`, new Headers(), 404);
   const { proposal } = found;
   const current = (await getPreferences(store, proposal.category)).find((p) => p.id === proposal.replaces);
   const others = conflictsWith(proposal, await listPending(store));
@@ -151,7 +151,7 @@ function errorPage(error: unknown, id?: string): Response {
   const hint = /: 40[13]$/.test(detail) ? ` The GitHub token may have expired or lost access; see <a href="/setup/status">setup status</a>.` : "";
   if (!known) console.error(JSON.stringify({ approvalError: detail, proposal: id }));
   return html(`<title>Not saved</title><h1>${known ? "Could not do that" : "Nothing was saved"}</h1>
-<div class="box"><p>${escape(detail)}${hint}</p></div>
+${say(`<p>${escape(detail)}${hint}</p>`, "oops")}
 <p>${id ? `<a href="/approve/${escape(id)}">Back to the proposal</a> · ` : ""}<a href="/approve">All pending</a></p>`, new Headers(), known ? 409 : 502);
 }
 
@@ -201,7 +201,9 @@ function resultNotice(params: URLSearchParams): string {
   if (n("skipped")) parts.push(`Skipped ${plural(n("skipped"), "proposal")} that conflict with each other; open them to decide one at a time.`);
   if (n("failed")) parts.push(`${plural(n("failed"), "proposal")} could not be saved and ${n("failed") === 1 ? "is" : "are"} still pending; open ${n("failed") === 1 ? "it" : "them"} to see why.`);
   if (n("left")) parts.push(`${plural(n("left"), "more proposal")} ${n("left") === 1 ? "was" : "were"} not decided yet: at most ${BATCH_LIMIT} go at once, so press again.`);
-  return parts.length ? `<div class="box notice" role="status"><p>${parts.join(" ")}</p></div>` : "";
+  if (!parts.length) return "";
+  const happy = (n("approved") > 0 || n("rejected") > 0) && !n("failed") && !n("skipped");
+  return `<div role="status">${say(`<p>${parts.join(" ")}</p>`, happy ? "happy" : "idle")}</div>`;
 }
 
 // Warns on owner pages once the GitHub token has under 30 days left. Read after the page's own
@@ -213,7 +215,7 @@ function tokenWarning(): string {
 
 // Shown once after a passphrase sign-in. Registering reloads this same page without the offer.
 function passkeyOffer(path: string): string {
-  return `<div class="box"><p>You signed in with the passphrase. Set up a passkey on this device to sign in with Face ID or Touch ID next time.</p>
+  return `<div class="box notice"><p>You signed in with the passphrase. Set up a passkey on this device to sign in with Face ID or Touch ID next time.</p>
 <p><button onclick="passkey('register')">Set up a passkey</button> <a href="${escape(path)}">Not now</a></p></div>${PASSKEY_SCRIPT}`;
 }
 
@@ -234,7 +236,7 @@ ${conflict ? `<p class="meta"><strong>Conflicts with another proposal.</strong> 
   const list = cards.length
     ? `<form method="post">${cards.join("\n")}
 <div class="actions bar"><button name="decision" value="approve">Approve ticked</button><button name="decision" value="reject" class="secondary">Reject ticked</button></div></form>`
-    : "<p>Nothing pending.</p>";
+    : say("<p><strong>Nothing pending.</strong> When an agent proposes a change, it shows up here for you to approve.</p>", notice ? "happy" : "idle");
   return html(`<title>Pending${pending.length ? ` (${pending.length})` : ""}</title>${offer}${notice}${tokenWarning()}<h1>Pending proposals</h1>
 ${pending.length > 1 ? `<p>Everything is ticked except proposals that conflict. Each approval is saved as its own commit.</p>` : ""}${list}
 <p><button onclick="passkey('register')" class="secondary">${passkeys ? "Add a passkey on this device" : "Set up a passkey (Face ID or Touch ID)"}</button></p>${offer ? "" : PASSKEY_SCRIPT}`);

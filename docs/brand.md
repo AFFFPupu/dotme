@@ -94,3 +94,19 @@ The mark's source, one character per pixel, for redrawing or animating Dot:
 `O` outline (Night, or Cream on dark), `E` eyes and mouth (always Night),
 `A` body (Dot), `B` shading (Ember), `P` cheeks (Blush), `W` highlight (white),
 `.` transparent.
+
+## Web pages
+
+Every page the Worker serves (consent, sign-in, approvals, setup status,
+errors) shares one layout from `src/html.ts`: the Dot logo and wordmark in the
+header, a Cream page with a Night-outlined card, and Dot-colored buttons. Dark
+mode swaps to a Night background and Dot's Cream outline.
+
+`src/brand.ts` draws Dot inline from the pixel grid above, so the Worker
+serves no image files; the favicon is an inline SVG too. Pages use three
+reactions that change only Dot's face: `idle`, `happy` (eyes closed in a
+smile, for approvals and a green setup status) and `oops` (a small frown, for
+errors). Dot speaks through a dialog box beside it.
+
+![Pages in light mode](screenshots/pages-light.png)
+![Pages in dark mode](screenshots/pages-dark.png)

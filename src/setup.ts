@@ -3,7 +3,7 @@
 // a short page for browsers. It never shows a secret, only whether it is set,
 // and it names no data repo, so it is safe to leave public.
 
-import { escape, html } from "./html";
+import { escape, html, say } from "./html";
 import { countPasskeys } from "./passkeys";
 
 export interface SetupEnv {
@@ -59,7 +59,7 @@ export function expiryCheck(expires: Date | null, now = new Date()): Check {
 export function expiryWarning(expires: Date | null, now = new Date()): string {
   const check = expiryCheck(expires, now);
   if (check.status === "ok") return "";
-  return `<div class="box"><p><strong>${escape(check.detail)}</strong> Approvals stop working when it expires. Create a new token and run <code>npm run wrangler -- secret put GITHUB_TOKEN</code>. <a href="/setup/status">Setup status</a></p></div>`;
+  return `<div class="box notice"><p><strong>${escape(check.detail)}</strong> Approvals stop working when it expires. Create a new token and run <code>npm run wrangler -- secret put GITHUB_TOKEN</code>. <a href="/setup/status">Setup status</a></p></div>`;
 }
 
 const isLocal = (origin: string) => /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(origin);
@@ -205,7 +205,7 @@ export async function runChecks(env: SetupEnv, origin: string, fetcher: typeof f
   return checks;
 }
 
-const ICON: Record<CheckStatus, string> = { ok: "✅", warn: "⚠️", fail: "❌", skip: "➖" };
+const TAG: Record<CheckStatus, string> = { ok: "OK", warn: "WARN", fail: "FAIL", skip: "SKIP" };
 
 export async function setupStatus(request: Request, env: SetupEnv): Promise<Response> {
   if (request.method !== "GET") return new Response("Method not allowed", { status: 405 });
@@ -220,10 +220,10 @@ export async function setupStatus(request: Request, env: SetupEnv): Promise<Resp
     });
   }
   const rows = checks.map(
-    (c) => `<li>${ICON[c.status]} <strong>${escape(c.id)}</strong>: ${escape(c.detail)}${c.fix ? `<br><small>${escape(c.fix)}</small>` : ""}</li>`
+    (c) => `<li><span class="tag ${c.status}">${TAG[c.status]}</span><span><strong>${escape(c.id)}</strong>: ${escape(c.detail)}${c.fix ? `<br><small class="meta">${escape(c.fix)}</small>` : ""}</span></li>`
   );
-  const summary = allGreen ? "Everything is set up." : ok ? "Working, with warnings below." : "Not working yet: fix the items marked ❌.";
+  const summary = allGreen ? "Everything is set up." : ok ? "Working, with warnings below." : "Not working yet: fix the items marked FAIL.";
   const headers = new Headers({ "Cache-Control": "no-store" });
-  return html(`<title>dotme setup status</title><h1>dotme setup status</h1><p>${summary}</p><ul>${rows.join("")}</ul>
+  return html(`<title>dotme setup status</title><h1>dotme setup status</h1>${say(`<p><strong>${summary}</strong></p>`, allGreen ? "happy" : ok ? "idle" : "oops")}<ul class="checks">${rows.join("")}</ul>
 <p><small>Agents: <code>curl ${escape(url.origin)}/setup/status</code> returns JSON.</small></p>`, headers);
 }
