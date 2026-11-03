@@ -24,8 +24,9 @@ const server = spawn(
   "npx",
   [
     "wrangler", "dev", "--port", String(port), "--ip", "127.0.0.1", "--persist-to", state, "--show-interactive-dev-session=false",
-    "--var", `OWNER_PASSPHRASE:${passphrase}`, "--var", `MCP_RESOURCE:${base}/mcp`, "--var", "STORAGE:kv",
+    "--var", `OWNER_PASSPHRASE:${passphrase}`, "--var", "STORAGE:kv",
     "--var", `EXPORT_TOKEN:${exportToken}`,
+    // No MCP_RESOURCE, as in a Deploy to Cloudflare install: the server uses the address it is reached at.
   ],
   { stdio: ["ignore", "pipe", "pipe"], detached: true }
 );

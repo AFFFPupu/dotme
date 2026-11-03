@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "license": "MIT",
+  "description": "Dotfiles for your AI agents: your preferences in a private GitHub repo, served to every agent over MCP.",
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
@@ -32,5 +33,21 @@
   },
   "allowScripts": {
     "workerd@1.20261023.1": true
+  },
+  "cloudflare": {
+    "bindings": {
+      "OWNER_PASSPHRASE": {
+        "description": "A long passphrase (12 characters or more) for signing in to your dotme. Keep it in a password manager."
+      },
+      "GITHUB_TOKEN": {
+        "description": "A fine-grained GitHub token with **Contents: Read and write** on your private data repo only. [Create one](https://github.com/settings/personal-access-tokens/new?name=dotme&description=dotme+server%3A+read+and+write+the+data+repo&expires_in=366&contents=write), choose **Only select repositories** and pick the data repo."
+      },
+      "GITHUB_REPO": {
+        "description": "Your private data repo as `owner/name`, for example `octocat/dotme-data`. Create it first: see [INSTALL.md](https://github.com/AFFFPupu/dotme/blob/main/INSTALL.md#deploy-to-cloudflare)."
+      },
+      "OAUTH_KV": {
+        "description": "Sign-in state: OAuth grants, sessions and passkeys. Leave the default to create a new namespace."
+      }
+    }
   }
 }

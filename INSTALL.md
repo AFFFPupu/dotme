@@ -10,6 +10,9 @@ open Claude Code or Codex in an empty folder and say
 The agent runs the commands. You do the few steps marked **Human**: signing
 in, choosing a passphrase, creating a GitHub token, approving in a browser.
 
+Prefer to click? [Deploy to Cloudflare](#deploy-to-cloudflare) sets up the
+server from the browser; you still connect your agents with steps 8 to 11.
+
 ## For the agent doing the install
 
 - Work through the steps in order. Each one ends with a **Check**; run it
@@ -38,6 +41,68 @@ Placeholders used below:
 | `<data-repo>` | The private preferences repo, `owner/name` | `octocat/dotme-data` |
 | `<worker>` | The Worker's name | `dotme` |
 | `<url>` | The Worker's origin, no trailing slash | `https://dotme.octocat.workers.dev` |
+
+## Deploy to Cloudflare
+
+The button deploys the server without a terminal. Cloudflare copies dotme
+into a new repo in your GitHub account, creates the KV namespace, asks for
+the secrets, and deploys again on every push to that repo.
+
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/AFFFPupu/dotme)
+
+The button's URL is
+`https://deploy.workers.cloudflare.com/?url=https://github.com/AFFFPupu/dotme`.
+In a fork, replace the repo URL with your fork's.
+
+All of this is **Human**, in the browser:
+
+1. Create the private data repo first, as in [step 3](#3-create-the-private-data-repo).
+   Without a terminal: create a private repo named `dotme-data` on
+   [github.com/new](https://github.com/new), then add the three files from
+   [`seed/`](seed/) with **Add file > Upload files**.
+2. Create the GitHub token with the link in [step 7](#7-set-the-secrets-human),
+   with access to the data repo only.
+3. Click the button. In the form, keep the Worker name `dotme` or pick your
+   own, keep the new KV namespace, and fill in `OWNER_PASSPHRASE` (12
+   characters at least), `GITHUB_TOKEN`, and `GITHUB_REPO` as
+   `<login>/dotme-data`.
+4. When the deploy finishes, open the Worker's URL plus `/setup/status`. The
+   URL is `https://<worker>.<subdomain>.workers.dev`, shown on the Worker's
+   page in the Cloudflare dashboard.
+
+**Check:** `/setup/status` shows `ok: true`. `export_token` and `passkey` are
+`warn` until steps 8 and 9.
+
+The Worker uses the address it is reached at as `<url>`, so there is nothing
+to configure. If you add a custom domain later, pick one address for your
+agents and stick to it: each address signs clients in separately.
+
+Then continue with [step 8](#8-export-token-for-session-hooks), in a clone of
+the repo Cloudflare created for you:
+
+```bash
+git clone <your-copy-url> dotme && cd dotme   # the repo Cloudflare created
+npm ci
+npx wrangler login     # Human approves in the browser
+```
+
+In step 8, replace `npm run -s wrangler -- secret put EXPORT_TOKEN` with
+`npx wrangler secret put EXPORT_TOKEN --name <worker>`. Do the same for any
+`secret put` that `/setup/status` suggests later. Steps 9 to 11 are the
+same.
+
+To update, pull the new dotme into your copy and push; Cloudflare deploys
+it:
+
+```bash
+git pull https://github.com/AFFFPupu/dotme.git main && git push
+```
+
+To switch to `npm run deploy` later, write `dotme.config.json` as in
+[step 5](#5-write-this-installs-config) with the namespace id from
+`npx wrangler kv namespace list`, then run
+`npx wrangler secret delete GITHUB_REPO --name <worker>` once before the
+first `npm run deploy`, which sets `GITHUB_REPO` from the config instead.
 
 ## 0. Requirements
 
@@ -347,6 +412,10 @@ npx wrangler kv namespace delete --namespace-id <kv-id>
 The data repo stays yours; delete it on GitHub if you want it gone. Revoke
 the GitHub token in your
 [token settings](https://github.com/settings/personal-access-tokens).
+
+With Deploy to Cloudflare, delete the Worker and the KV namespace in the
+Cloudflare dashboard instead of the last two commands, and delete the copy
+of dotme in your GitHub account.
 
 ## When something fails
 

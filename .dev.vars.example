@@ -1,0 +1,6 @@
+# The secrets the Deploy to Cloudflare button asks for. For local development,
+# write .dev.vars instead (see AGENTS.md); for `npm run deploy`, set them with
+# `npm run wrangler -- secret put <NAME>` (INSTALL.md step 7).
+OWNER_PASSPHRASE=
+GITHUB_TOKEN=
+GITHUB_REPO=
