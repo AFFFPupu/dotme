@@ -169,8 +169,11 @@ Contents read and write:
 
 <https://github.com/settings/personal-access-tokens/new?name=dotme&description=dotme+server%3A+read+and+write+the+data+repo&expires_in=366&contents=write>
 
-Under **Repository access**, choose **Only select repositories** and pick the
-data repo, and nothing else. Check that **Permissions** shows Contents: Read
+The link cannot pick the repo for you, and this step is easy to miss: under
+**Repository access**, choose **Only select repositories** and pick the data
+repo, and nothing else. Without it the token is accepted but sees no repo, and
+`/setup/status` shows `github_repo` as `fail`; fix it by editing the token on
+GitHub, with no new secret needed. Check that **Permissions** shows Contents: Read
 and write (Metadata: Read-only is added by GitHub). Generate it, then paste
 it at this prompt:
 
