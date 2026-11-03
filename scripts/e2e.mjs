@@ -60,6 +60,11 @@ console.log("consent POST:", post.status);
 assert.equal(post.status, 302);
 assert.equal(new URL(location).searchParams.get("state"), "xyz");
 const code = new URL(location).searchParams.get("code");
+// Unified login: the passphrase typed on the consent page also signs the owner in to /approve.
+const consentSession = post.headers.getSetCookie().find((c) => c.startsWith("owner_session="))?.split(";")[0];
+const pendingWithConsentSession = consentSession ? await (await fetch(`${base}/approve`, { headers: { Cookie: consentSession } })).text() : "";
+console.log("consent sign-in opens /approve:", pendingWithConsentSession.includes("Pending proposals"));
+assert.ok(pendingWithConsentSession.includes("Pending proposals"));
 
 const token = await (await fetch(meta.token_endpoint, {
   method: "POST",

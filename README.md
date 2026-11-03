@@ -22,7 +22,10 @@ to Cloudflare Workers; the design and v1 plan are in
 - `/approve`: owner page. Shows each proposal's diff, evidence and conflicts;
   approve (optionally scoped with "only applies when"), or reject. Sign in
   with the passphrase once per device, then set up a passkey right there to
-  use Face ID or Touch ID from then on.
+  use Face ID or Touch ID from then on. The consent page and `/approve` share
+  one owner session, so signing in on either signs you in on both. After 5
+  wrong passphrases from one address, passphrase sign-in is locked for 15
+  minutes there; passkeys still work.
 - Approval in the client: connections you trust (Claude Code) can show the
   proposal in their own dialog instead of a link. Accept saves; Decline or
   closing it falls back to the link.
@@ -32,6 +35,11 @@ to Cloudflare Workers; the design and v1 plan are in
 - Storage: the private repo in `GITHUB_REPO` (one Markdown file per
   category, `pending/` for open proposals), or KV with `STORAGE=kv` for
   local development.
+- Categories: `collab`, `coding` and `life` always exist. Add your own by
+  pushing a Markdown file with a lowercase name, such as `work.md`, to the
+  root of the data repo. Existing connections do not see it until you
+  connect them again and tick it on the consent page, so a new private
+  category never leaks to an agent you already trusted.
 
 ## Run locally
 

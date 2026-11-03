@@ -33,20 +33,37 @@ export async function hasPasskeys(kv: KVNamespace): Promise<boolean> {
   return (await kv.list({ prefix: "passkey:", limit: 1 })).keys.length > 0;
 }
 
-// The challenge lives in KV for five minutes, keyed by a nonce in a cookie bound to this browser.
-async function saveChallenge(kv: KVNamespace, challenge: string): Promise<string> {
-  const nonce = toB64url(crypto.getRandomValues(new Uint8Array(16)));
-  await kv.put(`webauthn:${nonce}`, challenge, { expirationTtl: 300 });
-  return `${NONCE_COOKIE}=${nonce}; Path=/approve; Max-Age=300; HttpOnly; Secure; SameSite=Strict`;
+// The challenge is not stored: it travels in a signed, five-minute cookie bound to this browser, so
+// asking for one (which anyone can do) writes nothing to KV. A challenge is marked used in KV only
+// after a passkey answered it, which takes a registered passkey, so it cannot be replayed.
+const CHALLENGE_SECONDS = 300;
+
+async function challengeKey(secret: string): Promise<CryptoKey> {
+  const raw = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`webauthn:${secret}`));
+  return crypto.subtle.importKey("raw", raw, { name: "HMAC", hash: "SHA-256" }, false, ["sign", "verify"]);
 }
 
-async function takeChallenge(kv: KVNamespace, request: Request): Promise<string | null> {
-  const nonce = request.headers.get("Cookie")?.match(new RegExp(`${NONCE_COOKIE}=([^;]+)`))?.[1];
-  if (!nonce) return null;
-  const challenge = await kv.get(`webauthn:${nonce}`);
-  await kv.delete(`webauthn:${nonce}`);
+async function challengeCookie(secret: string, challenge: string): Promise<string> {
+  const payload = `${challenge}.${Math.floor(Date.now() / 1000) + CHALLENGE_SECONDS}`;
+  const sig = toB64url(new Uint8Array(await crypto.subtle.sign("HMAC", await challengeKey(secret), new TextEncoder().encode(payload))));
+  return `${NONCE_COOKIE}=${payload}.${sig}; Path=/approve; Max-Age=${CHALLENGE_SECONDS}; HttpOnly; Secure; SameSite=Strict`;
+}
+
+// The challenge this browser was given, if its cookie is genuine, unexpired and not used yet.
+async function readChallenge(kv: KVNamespace, secret: string, request: Request): Promise<string | null> {
+  const value = request.headers.get("Cookie")?.match(new RegExp(`${NONCE_COOKIE}=([^;]+)`))?.[1];
+  const [challenge, expires, sig] = value?.split(".") ?? [];
+  if (!challenge || !expires || !sig || Number(expires) < Date.now() / 1000) return null;
+  try {
+    const ok = await crypto.subtle.verify("HMAC", await challengeKey(secret), fromB64url(sig), new TextEncoder().encode(`${challenge}.${expires}`));
+    if (!ok || (await kv.get(`webauthn-used:${challenge}`)) !== null) return null;
+  } catch {
+    return null;
+  }
   return challenge;
 }
+
+const markUsed = (kv: KVNamespace, challenge: string) => kv.put(`webauthn-used:${challenge}`, "1", { expirationTtl: CHALLENGE_SECONDS });
 
 const json = (body: unknown, cookie?: string) => {
   const headers = new Headers({ "Content-Type": "application/json" });
@@ -54,7 +71,7 @@ const json = (body: unknown, cookie?: string) => {
   return new Response(JSON.stringify(body), { headers });
 };
 
-export async function registrationOptions(kv: KVNamespace, request: Request): Promise<Response> {
+export async function registrationOptions(kv: KVNamespace, request: Request, secret: string): Promise<Response> {
   const rpID = new URL(request.url).hostname;
   const existing = await listPasskeys(kv);
   const options = await generateRegistrationOptions({
@@ -65,12 +82,12 @@ export async function registrationOptions(kv: KVNamespace, request: Request): Pr
     excludeCredentials: existing.map((p) => ({ id: p.id, transports: p.stored.transports })),
     authenticatorSelection: { residentKey: "required", userVerification: "required" },
   });
-  return json(options, await saveChallenge(kv, options.challenge));
+  return json(options, await challengeCookie(secret, options.challenge));
 }
 
-export async function register(kv: KVNamespace, request: Request): Promise<Response> {
+export async function register(kv: KVNamespace, request: Request, secret: string): Promise<Response> {
   const url = new URL(request.url);
-  const expectedChallenge = await takeChallenge(kv, request);
+  const expectedChallenge = await readChallenge(kv, secret, request);
   if (!expectedChallenge) return new Response("Expired, try again", { status: 400 });
   const result = await verifyRegistrationResponse({
     response: (await request.json()) as RegistrationResponseJSON,
@@ -80,21 +97,22 @@ export async function register(kv: KVNamespace, request: Request): Promise<Respo
     requireUserVerification: true,
   });
   if (!result.verified) return new Response("Passkey not verified", { status: 400 });
+  await markUsed(kv, expectedChallenge);
   const { credential } = result.registrationInfo;
   const stored: StoredPasskey = { publicKey: toB64url(credential.publicKey), counter: credential.counter, transports: credential.transports };
   await kv.put(`passkey:${credential.id}`, JSON.stringify(stored));
   return json({ ok: true });
 }
 
-export async function authenticationOptions(kv: KVNamespace, request: Request): Promise<Response> {
+export async function authenticationOptions(request: Request, secret: string): Promise<Response> {
   const options = await generateAuthenticationOptions({ rpID: new URL(request.url).hostname, userVerification: "required" });
-  return json(options, await saveChallenge(kv, options.challenge));
+  return json(options, await challengeCookie(secret, options.challenge));
 }
 
 // Returns true when the response proves possession of a registered passkey.
-export async function authenticate(kv: KVNamespace, request: Request): Promise<boolean> {
+export async function authenticate(kv: KVNamespace, request: Request, secret: string): Promise<boolean> {
   const url = new URL(request.url);
-  const expectedChallenge = await takeChallenge(kv, request);
+  const expectedChallenge = await readChallenge(kv, secret, request);
   if (!expectedChallenge) return false;
   const response = (await request.json()) as AuthenticationResponseJSON;
   const stored = await kv.get<StoredPasskey>(`passkey:${response.id}`, "json");
@@ -109,6 +127,7 @@ export async function authenticate(kv: KVNamespace, request: Request): Promise<b
     requireUserVerification: true,
   });
   if (!result.verified) return false;
+  await markUsed(kv, expectedChallenge);
   await kv.put(`passkey:${response.id}`, JSON.stringify({ ...stored, counter: result.authenticationInfo.newCounter }));
   return true;
 }
