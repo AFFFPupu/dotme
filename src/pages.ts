@@ -4,23 +4,14 @@ import { approve, conflictsWith, getPreferences, getProposal, listPending, rejec
 import { CATEGORIES, cleanLine } from "./prefs";
 import { authenticate, authenticationOptions, hasPasskeys, PASSKEY_SCRIPT, register, registrationOptions } from "./passkeys";
 import type { Store } from "./store";
+import { lastTokenExpiry } from "./store";
+import { escape, html } from "./html";
+import { expiryWarning, parseTokenExpiry } from "./setup";
+
+export { escape, html };
 
 const COOKIE = "owner_session";
 const SESSION_SECONDS = 60 * 60 * 24 * 30;
-
-export const escape = (value: string) => value.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
-
-export function html(body: string, headers = new Headers(), status = 200): Response {
-  headers.set("Content-Type", "text/html; charset=utf-8");
-  headers.set("X-Frame-Options", "DENY");
-  return new Response(
-    `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width">
-<style>body{font:16px/1.5 system-ui,sans-serif;max-width:40rem;margin:2rem auto;padding:0 1rem}
-del{background:#fdd}ins{background:#dfd;text-decoration:none}.box{border:1px solid #ccc;border-radius:6px;padding:.75rem 1rem;margin:1rem 0}
-button{font-size:1rem;padding:.4rem .9rem;margin-right:.5rem}input[type=text]{width:100%;font-size:1rem}</style>${body}`,
-    { headers, status }
-  );
-}
 
 // Constant-time comparison so the passphrase check does not leak through timing.
 export async function samePassphrase(given: string, expected: string): Promise<boolean> {
@@ -124,7 +115,7 @@ export async function handleApprovalPages(request: Request, passphrase: string, 
         ? `<del>- ${escape(current?.text ?? proposal.replaces!)}</del>`
         : `<del>- ${escape(current?.text ?? "")}</del><br><ins>+ ${escape(proposal.text!)}</ins>`;
 
-  return html(`<title>Approve ${escape(proposal.id)}</title>${offer}
+  return html(`<title>Approve ${escape(proposal.id)}</title>${offer}${tokenWarning()}
 <h1>${escape(proposal.by)} wants to ${escape(proposal.op)} a <code>${escape(proposal.category)}</code> preference</h1>
 <div class="box">${diff}</div>
 <p><strong>Evidence:</strong> ${escape(proposal.evidence)}</p>
@@ -133,6 +124,13 @@ ${others.length ? `<p><strong>Conflicts:</strong> ${others.map((o) => `<a href="
 ${proposal.op === "remove" ? "" : `<p><label>Only applies when (optional, e.g. "personal projects")<br><input type="text" name="when" value="${escape(proposal.when ?? "")}"></label></p>`}
 <p><button name="decision" value="approve">Approve</button><button name="decision" value="reject">Reject</button></p>
 </form><p><a href="/approve">All pending</a></p>`);
+}
+
+// Warns on owner pages once the GitHub token has under 30 days left. Read after the page's own
+// store calls, which record the expiry GitHub sends; KV storage has no token and shows nothing.
+function tokenWarning(): string {
+  const header = lastTokenExpiry();
+  return header ? expiryWarning(parseTokenExpiry(header)) : "";
 }
 
 // Shown once after a passphrase sign-in. Registering reloads this same page without the offer.
@@ -144,6 +142,6 @@ function passkeyOffer(path: string): string {
 async function pendingListPage(store: Store, passkeys: boolean, offer: string): Promise<Response> {
   const pending = await listPending(store, CATEGORIES);
   const rows = pending.map((p) => `<li><a href="/approve/${escape(p.id)}">${escape(p.by)} · ${escape(p.category)} · ${escape(p.op)}: ${escape(p.text ?? p.replaces ?? "")}</a></li>`);
-  return html(`<title>Pending</title>${offer}<h1>Pending proposals</h1>${rows.length ? `<ul>${rows.join("")}</ul>` : "<p>Nothing pending.</p>"}
+  return html(`<title>Pending</title>${offer}${tokenWarning()}<h1>Pending proposals</h1>${rows.length ? `<ul>${rows.join("")}</ul>` : "<p>Nothing pending.</p>"}
 <p><button onclick="passkey('register')">${passkeys ? "Add a passkey on this device" : "Set up a passkey (Face ID or Touch ID)"}</button></p>${offer ? "" : PASSKEY_SCRIPT}`);
 }

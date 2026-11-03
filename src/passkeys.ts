@@ -25,6 +25,10 @@ async function listPasskeys(kv: KVNamespace): Promise<{ id: string; stored: Stor
   return Promise.all(keys.map(async (k) => ({ id: k.name.slice("passkey:".length), stored: (await kv.get<StoredPasskey>(k.name, "json"))! })));
 }
 
+export async function countPasskeys(kv: KVNamespace): Promise<number> {
+  return (await kv.list({ prefix: "passkey:" })).keys.length;
+}
+
 export async function hasPasskeys(kv: KVNamespace): Promise<boolean> {
   return (await kv.list({ prefix: "passkey:", limit: 1 })).keys.length > 0;
 }

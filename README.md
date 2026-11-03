@@ -67,6 +67,21 @@ npm run deploy
 | `kvNamespaceId` | The id printed by `kv namespace create`. |
 | `githubRepo` | Your private data repo, `owner/name`. Seed it with the example files in `seed/`. |
 
+Then check the install:
+
+```bash
+curl -sS <url>/setup/status   # JSON; open it in a browser for a readable page
+```
+
+It reports each piece as `ok`, `warn`, `fail` or `skip`: the passphrase, the
+`MCP_RESOURCE` URL, KV, the data repo (reachable and private), the GitHub
+token (accepted, can write, and its expiry), the export token and passkeys.
+Each item that is not `ok` says how to fix it, and fixes only a human can do
+(typing a secret, adding a passkey) start with `Human:`. It never shows secret
+values. `ok: true` means dotme works; `allGreen: true` means nothing is left.
+From 30 days before the GitHub token expires, the status page and the approval
+page show a warning.
+
 Connect a client to `<url>/mcp`.
 
 ## Claude Code and Codex
