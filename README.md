@@ -18,8 +18,9 @@ to Cloudflare Workers; the design and v1 plan are in
   see and enter the owner passphrase. The name is stamped on its proposals.
 - `/approve`: owner page. Shows each proposal's diff, evidence and conflicts;
   approve (optionally scoped with "only applies when"), or reject.
-- `/export/collab.md`: the core as plain Markdown, for scripts that copy it
-  into a client. Needs `Authorization: Bearer <EXPORT_TOKEN>`.
+- `/export?categories=collab,coding`: preferences as plain Markdown, for the
+  SessionStart hook that copies them into each new session (default
+  `collab,coding`). Needs `Authorization: Bearer <EXPORT_TOKEN>`.
 - Storage: the private repo in `GITHUB_REPO` (one Markdown file per
   category, `pending/` for open proposals), or KV with `STORAGE=kv` for
   local development.
@@ -60,20 +61,7 @@ npm run deploy
 
 Connect a client to `<url>/mcp`.
 
-## Claude Code
+## Claude Code and Codex
 
-`clients/claude-code/dotme-sync.sh` is a SessionStart hook: it prints the
-core into each new session's context and keeps a copy for when the server is
-unreachable.
-
-```bash
-mkdir -p ~/.config/dotme && chmod 700 ~/.config/dotme
-cp clients/claude-code/dotme-sync.sh ~/.config/dotme/sync.sh
-printf 'https://<worker>\n' > ~/.config/dotme/url
-umask 077; t=$(openssl rand -hex 32)
-printf 'Authorization: Bearer %s\n' "$t" > ~/.config/dotme/auth-header
-printf '%s' "$t" | npm run -s wrangler -- secret put EXPORT_TOKEN; unset t
-```
-
-Then add `~/.config/dotme/sync.sh` as a `SessionStart` command hook in
-`~/.claude/settings.json`.
+Plugins for both clients load your preferences at the start of every session
+and connect the MCP server. See [clients/README.md](clients/README.md).

@@ -1,0 +1,13 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "dotme",
+  "version": "0.1.0",
+  "description": "Dotfiles for your AI agents: loads your dotme preferences at session start.",
+  "license": "MIT",
+  "extensions": {
+    "com.openai": {
+      "hooks": "./hooks/hooks.json",
+      "interface": { "displayName": "dotme", "category": "Productivity" }
+    }
+  }
+}

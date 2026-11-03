@@ -12,7 +12,7 @@ import { z } from "zod";
 import { escape, handleApprovalPages, html, samePassphrase } from "./pages";
 import { approve, getPreferences, isCategory, listPending, propose } from "./dotme";
 import { CATEGORIES, cleanLine } from "./prefs";
-import type { Category } from "./prefs";
+import type { Category, Preference } from "./prefs";
 import { makeStore } from "./store";
 import type { StoreEnv } from "./store";
 
@@ -175,19 +175,40 @@ function createServer() {
 
 const mcpHandler = createMcpHandler(createServer);
 
-// The core (collab) as plain Markdown for clients that copy it in at session start.
-async function exportCore(request: Request, env: Env): Promise<Response> {
+// Preferences as plain Markdown for scripts that copy them into a client at session start, such as
+// the Claude Code and Codex SessionStart hook. The export token is read-only and may read every
+// category; the hook picks which ones with ?categories=collab,coding (the default).
+// /export/collab.md is the original single-category form, kept for hooks installed before plugins.
+const DEFAULT_EXPORT: readonly Category[] = ["collab", "coding"];
+const formatPrefs = (prefs: Preference[]) => prefs.map((p) => `- ${p.text}${p.when ? ` (when: ${p.when})` : ""}`).join("\n");
+const markdown = (body: string, status = 200) =>
+  new Response(body, { status, headers: { "Content-Type": "text/markdown; charset=utf-8", "Cache-Control": "no-store" } });
+
+async function exportPreferences(request: Request, env: Env): Promise<Response> {
   const given = request.headers.get("Authorization")?.replace(/^Bearer /, "") ?? "";
   if (!env.EXPORT_TOKEN || !(await samePassphrase(given, env.EXPORT_TOKEN))) return new Response("Unauthorized", { status: 401 });
-  const prefs = await getPreferences(makeStore(env), "collab");
-  const lines = prefs.map((p) => `- ${p.text}${p.when ? ` (when: ${p.when})` : ""}`);
-  return new Response(`${lines.join("\n")}\n`, { headers: { "Content-Type": "text/markdown; charset=utf-8", "Cache-Control": "no-store" } });
+  if (request.method !== "GET") return new Response("Method not allowed", { status: 405 });
+  const url = new URL(request.url);
+  const store = makeStore(env);
+  if (url.pathname === "/export/collab.md") return markdown(`${formatPrefs(await getPreferences(store, "collab"))}\n`);
+
+  const asked = url.searchParams.get("categories");
+  const names = asked === null ? [...DEFAULT_EXPORT] : [...new Set(asked.split(",").map((c) => c.trim()).filter(Boolean))];
+  const unknown = names.filter((c) => !isCategory(c));
+  if (names.length === 0 || unknown.length > 0) {
+    return markdown(`Unknown category: ${unknown.join(", ") || "(none given)"}. Known: ${CATEGORIES.join(", ")}.\n`, 400);
+  }
+  const sections = await Promise.all(
+    (names as Category[]).map(async (c) => `## ${c}\n\n${formatPrefs(await getPreferences(store, c)) || "(none yet)"}`)
+  );
+  return markdown(`${sections.join("\n\n")}\n`);
 }
 
 const AuthHandler = {
   async fetch(request: Request, env: Env): Promise<Response> {
     if (!env.OWNER_PASSPHRASE) return new Response("Server has no OWNER_PASSPHRASE set.", { status: 503 });
-    if (new URL(request.url).pathname === "/export/collab.md") return exportCore(request, env);
+    const path = new URL(request.url).pathname;
+    if (path === "/export" || path === "/export/collab.md") return exportPreferences(request, env);
     const approval = await handleApprovalPages(request, env.OWNER_PASSPHRASE, makeStore(env), env.OAUTH_KV);
     if (approval) return approval;
 
