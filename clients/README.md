@@ -1,7 +1,8 @@
 # Client plugins
 
-dotme ships a plugin for Claude Code and one for Codex. Both run the same
-SessionStart hook (`shared/session-start.sh`): at the start of every session
+dotme ships a plugin for Claude Code and one for Codex. Both bundle two
+skills, `/dotme-import` and `/dotme-review` (see [Skills](#skills)), and run
+the same SessionStart hook (`shared/session-start.sh`): at the start of every session
 it fetches your preferences from your dotme server and prints them, and the
 client adds them to the session's context. Agents follow them without having
 to remember to call a tool. When the server is unreachable, the hook uses the
@@ -11,7 +12,8 @@ last copy it fetched.
 |---|---|---|
 | SessionStart hook | in the plugin | `npm run codex:hook` adds it to `~/.codex/hooks.json` (Codex 0.164 and later removed plugin hooks) |
 | MCP connection | in the plugin | one `codex mcp add` command |
-| Approval dialog in the client | yes | not yet, see below |
+| Approval dialog in the client | yes | yes, with `mcp_2026_07_28` on (see below) |
+| Skills | in the plugin | in the plugin (untested, see [Skills](#skills)) |
 
 The hook loads `collab,coding` by default. `life` stays out of coding
 sessions unless you add it.
@@ -44,7 +46,7 @@ Commands below use two placeholders:
 The hook reads your preferences with a read-only export token. These
 commands create it, save it in `~/.config/dotme/auth-header` (mode 600) and
 store it on the server, without the token ever being printed. Run them in
-your dotme checkout, after `dotme.config.json` is set up (see the main README):
+your dotme checkout, after `dotme.config.json` is set up (see [INSTALL.md](../INSTALL.md), step 8):
 
 ```bash
 mkdir -p ~/.config/dotme && chmod 700 ~/.config/dotme
@@ -85,24 +87,23 @@ Then connect the MCP server once: run `/mcp`, pick `plugin:dotme:dotme`,
 and Allow on the consent page with the agent name `claude-code`. Start a new
 session; it opens with your preferences.
 
-The dialog shows the change and the evidence, with an optional "only applies
-when" field. **Accept** saves it. **Decline** or closing the dialog keeps it
-pending with a link to the approval page, where you approve or reject it.
+The dialog shows the change, its scope ("always" or "only when ...") and the
+evidence. **Accept** saves it as shown. **Decline** or closing the dialog
+keeps it pending with a link to the approval page, where you can change the
+scope, approve or reject it.
 
 **If you also use dotme on claude.ai.** Claude Code syncs your claude.ai
-connectors in, and it hides a plugin's MCP server when a claude.ai connector
-has the same URL. The session then acts as your `claude-ai` agent and gets
-links instead of the dialog (`whoami` shows it). A server you add yourself
-wins over both, so add dotme once by hand:
+connectors in. Current versions see that the synced `claude.ai dotme` has
+the same URL as the plugin's server and hide it: `/mcp` lists it as
+"hidden, same URL as your server 'plugin:dotme:dotme'", and `whoami` says
+`claude-code`. Some earlier versions hid the plugin's server instead, so the
+session acted as your `claude-ai` agent and got links instead of the dialog.
+If `whoami` says `claude-ai`, add dotme once by hand; a server you add
+yourself wins over both, in every directory:
 
 ```bash
 claude mcp add --transport http --scope user dotme https://<worker>/mcp
 ```
-
-Claude Code then hides the synced `claude.ai dotme` and the plugin's copy,
-and uses this one, in every directory. Connect it in `/mcp` as above, with
-the agent name `claude-code`. The plugin still loads your preferences at
-session start. Without a claude.ai connector you do not need this step.
 
 To change which categories the hook loads, run
 `/plugin configure dotme@dotme`, or reinstall with
@@ -110,9 +111,9 @@ To change which categories the hook loads, run
 
 **Upgrading from the old hook.** If `~/.claude/settings.json` has a
 `SessionStart` hook that runs `~/.config/dotme/sync.sh`, remove that entry
-so preferences are not loaded twice. Keep a `dotme` MCP server you added by
-hand if you also use the claude.ai connector (see above); otherwise you can
-remove it (`claude mcp remove dotme -s user`). The plugin reuses
+so preferences are not loaded twice, and remove a `dotme` MCP server you
+added by hand (`claude mcp remove dotme -s user`) unless you need it for the
+claude.ai case above. The plugin reuses
 `~/.config/dotme/url` and `~/.config/dotme/auth-header`.
 
 ## 3. Codex
@@ -158,21 +159,25 @@ codex mcp login dotme
 
 On the consent page, set the agent name to `codex` and Allow.
 
-**Approval dialogs (experimental).** Codex can only show dotme's approval
-dialog with the MCP protocol version 2026-07-28, which is behind a flag. You
-do not need it: without it you approve on a link. The plugin leaves your
-global flags alone; to try it, add this to `~/.codex/config.toml`:
+**Approval dialogs.** Codex shows dotme's approval dialog with the MCP
+protocol version 2026-07-28, which is behind a flag. The plugin leaves your
+global flags alone; to turn it on, add this to `~/.codex/config.toml`:
 
 ```toml
 [features]
 mcp_2026_07_28 = true
 ```
 
-Without it, the agent gives you a link to the approval page instead, which
-works the same. In testing, Codex 0.166 still gave a link with the flag on.
-To see what Codex sends, run `npm run wrangler -- tail` while it proposes;
-each proposal logs the protocol version and client capabilities it arrived
-with.
+Tested with Codex 0.166: the dialog appears, Accept saves, and the agent
+reports "approved and saved". Its `tool_call_mcp_elicitation` feature must be
+on, which it is by default (`codex features list`). The dialog has no
+fields, so Enter accepts. (It used to have an optional "only applies when"
+field, and in Warp Enter did nothing while it was empty.) Without the
+flag the agent gives you a link to the approval page instead, which works
+the same. To see what Codex sends, run `npm run wrangler -- tail` while it
+proposes: each proposal logs the protocol version and client capabilities,
+and a `dialogAnswer` line says whether the dialog was accepted, declined or
+cancelled.
 
 ## 4. Web and cloud clients
 
@@ -200,11 +205,51 @@ On the consent page name the agent `grok` or `grok-bot`.
 | Client | Connect | Read | Approve | Notes |
 |---|---|---|---|---|
 | Claude Code | tested | tested | dialog or link | Plugin, section 2. |
-| Codex | tested | tested | link | Plugin, section 3. |
-| claude.ai | tested | tested | link | Settings > Connectors > Add custom connector. In Claude Code, a claude.ai connector named dotme can shadow the plugin's MCP server. |
+| Codex | tested | tested | dialog or link | Plugin and `npm run codex:hook`, section 3. Dialog with `mcp_2026_07_28` on, tested on 0.166. |
+| claude.ai | tested | tested | link | Settings > Connectors > Add custom connector. In Claude Code, current versions hide a synced claude.ai connector with the plugin's URL; see section 2. |
 | grok.com | untested | untested | link | |
 | Grok Bot | tested | tested | link | Tested 2026-11-03: sign-in, `whoami`, `get_preferences` and a link approval. dotme versions before private-use redirect URIs were allowed (`cursor://`) reject the sign-in with "Invalid redirect URI". |
 | ChatGPT, Cursor | untested | untested | link | Any remote MCP client with OAuth should work. |
+
+## Skills
+
+Both plugins ship two skills. Each one asks you before it proposes anything,
+and every proposal still needs your approval.
+
+| Skill | What it does |
+|---|---|
+| `/dotme-import` | Reads `~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md` and any memory export you paste or point it to (ChatGPT, claude.ai), picks the lasting personal preferences, skips project-specific lines, secrets and what dotme already holds, and lists them for you to choose from. |
+| `/dotme-review` | Reads what you typed in your recent Claude Code and Codex sessions (default 7 days; `/dotme-review 14` for two weeks), looks for preferences you stated and corrections you repeated, and lists up to 10 for you to choose from. |
+
+Claude Code may list them as `/dotme:dotme-import` and `/dotme:dotme-review`.
+In Codex, type `$dotme-import` or pick them from `/skills`. If Codex does not
+list them, copy them to your own skills folder:
+
+```bash
+mkdir -p ~/.codex/skills && cp -R clients/codex/skills/* ~/.codex/skills/
+```
+
+`/dotme-review` reads transcripts with `recent-messages.mjs`, next to its
+`SKILL.md`. It needs Node.js, prints only your own messages (no agent replies,
+tool output or injected context) and sends nothing anywhere. Run it yourself
+to see what the agent will read:
+
+```bash
+node clients/shared/skills/dotme-review/recent-messages.mjs --days 7
+```
+
+**Running `/dotme-review` on a schedule.** dotme does not schedule it; use
+your client or your system's scheduler. Unattended, the skill proposes at
+most 5 strong candidates, which wait for you on the approval page. For
+example, every Monday at 9 with cron:
+
+```cron
+0 9 * * 1 cd ~ && claude -p "/dotme:dotme-review" >> ~/.config/dotme/review.log 2>&1
+```
+
+`claude -p` cannot ask for tool permissions, so allow the dotme tools and
+`node` for it first (in `/permissions`, or with `--allowedTools`). The log
+lists the approval links.
 
 ## Settings
 
@@ -231,9 +276,8 @@ never appears in a command line, an environment variable or a session.
 
 ## Developing the plugins
 
-The plugins keep their own copy of the hook, because each client copies a
-plugin into its cache on install. Edit `shared/session-start.sh`, then run
+The plugins keep their own copy of the hook and the skills, because each
+client copies a plugin into its cache on install. Edit
+`shared/session-start.sh` or a file under `shared/skills/`, then run
 `npm run sync:plugins`; `npm run check:plugins` fails while a copy differs.
 Validate the Claude Code side with `claude plugin validate .`.
-
-Skills (`/dotme-import`, `/dotme-review`) will ship in these plugins.

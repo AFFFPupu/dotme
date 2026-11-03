@@ -4,6 +4,9 @@ Dotfiles for your AI agents: a self-hosted MCP server (Cloudflare Workers)
 over the user's private GitHub repo of preferences. Agents read preferences
 and propose changes; the owner approves each one.
 
+To install dotme for yourself rather than develop it, follow
+[INSTALL.md](INSTALL.md) and ignore the rest of this file.
+
 Read [docs/v1-scope.md](docs/v1-scope.md) before planning or building. It
 holds the decided v1 scope, decisions and release criteria, and wins over any
 earlier plan or review.

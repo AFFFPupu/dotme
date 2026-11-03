@@ -6,7 +6,7 @@
 
 import { OAuthProvider, AuthorizationError, CimdFetchError } from "@cloudflare/workers-oauth-provider";
 import type { OAuthHelpers } from "@cloudflare/workers-oauth-provider";
-import { CLIENT_CAPABILITIES_META_KEY, McpServer, PROTOCOL_VERSION_META_KEY, acceptedContent, inputRequired, inputResponse } from "@modelcontextprotocol/server";
+import { CLIENT_CAPABILITIES_META_KEY, McpServer, PROTOCOL_VERSION_META_KEY, inputRequired, inputResponse } from "@modelcontextprotocol/server";
 import { createMcpHandler, getMcpAuthContext } from "agents/mcp/server";
 import { env as workerEnv } from "cloudflare:workers";
 import { z } from "zod";
@@ -106,10 +106,11 @@ function logDialogAnswer(agent: string, response: ReturnType<typeof inputRespons
 }
 
 // Accept saves. Decline or dismissing keeps it pending with a link, where the owner can reject it:
-// clients with no window to show the dialog in decline on their own, and that must not drop a proposal. The form only asks for an optional scope.
-const approvalSchema = z.object({
-  when: z.string().max(120).optional().describe("Only applies when (optional), e.g. personal projects"),
-});
+// clients with no window to show the dialog in decline on their own, and that must not drop a proposal.
+// The form has no fields, so it is a plain confirm: an optional text field kept Enter from submitting
+// in Codex (seen in Warp) until something was typed, which then saved as the scope. The scope is the
+// one proposed; to change it, the owner declines and edits it on the approval page.
+const approvalSchema = z.object({});
 
 // Read-only tools say so, so clients can run them without asking each time. propose_change changes
 // nothing by itself either (the owner approves), but it is not marked read-only because it can open
@@ -189,15 +190,15 @@ function createServer() {
             inputRequests: {
               approval: inputRequired.elicit({
                 message:
-                  `dotme: ${agent} wants to ${change} in ${input.category}.${input.when ? ` Suggested scope: ${input.when}.` : ""} Evidence: ${input.evidence}\n\n` +
-                  "Accept saves it now. Decline or close this to decide on the approval page instead, where you can also reject it.",
+                  `dotme: ${agent} wants to ${change} in ${input.category}, ${input.when ? `only when: ${input.when}` : "always"}. Evidence: ${input.evidence}\n\n` +
+                  "Accept saves it now. Decline or close this to decide on the approval page instead, where you can change the scope or reject it.",
                 requestedSchema: approvalSchema,
               }),
             },
           });
         }
-        const answer = acceptedContent(responses, "approval", approvalSchema);
-        if (answer) {
+        // Any accept counts, with or without content: the form asks for nothing, so content is ignored.
+        if (response.kind === "elicit" && response.action === "accept") {
           const proposal = await propose(store, {
             category: input.category,
             op: input.op,
@@ -207,10 +208,10 @@ function createServer() {
             evidence: cleanLine(input.evidence, 500),
             by: agent,
           });
-          await approve(store, proposal.id, cleanLine(answer.when ?? input.when ?? "", 120) || undefined);
+          await approve(store, proposal.id, proposal.when);
           return text({ status: "approved and saved", proposal: proposal.id });
         }
-        // Declined, dismissed, or an answer that did not fit the form: keep it as a pending proposal with a link, below.
+        // Declined or dismissed: keep it as a pending proposal with a link, below.
       }
 
       const proposal = await propose(store, {

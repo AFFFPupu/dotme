@@ -243,13 +243,12 @@ So preferences are not loaded twice:
 - If `~/.claude/settings.json` has a `SessionStart` hook running
   `~/.config/dotme/sync.sh`, delete that entry.
 - If you added dotme as a connector on claude.ai, Claude Code syncs it in as
-  `claude.ai dotme` and hides the plugin's server, which has the same URL.
-  That connection is named `claude-ai` and cannot show the dialog. A server
-  added by hand wins over both, so keep (or add) one:
+  `claude.ai dotme`. Current versions hide it because the plugin's server has
+  the same URL. Pass, after 5.4: `/mcp` shows `claude.ai dotme` as hidden
+  (same URL as `plugin:dotme:dotme`), and `whoami` says `claude-code`. If
+  `whoami` says `claude-ai` instead, add dotme by hand, which wins over both:
   `claude mcp add --transport http --scope user dotme <url>/mcp`.
-  Pass, after 5.4: `/mcp` lists `dotme` as connected, and `whoami` says
-  `claude-code`.
-- Without a claude.ai connector, remove an MCP server you added by hand:
+- Otherwise, remove an MCP server you added by hand:
   `claude mcp list`, then `claude mcp remove dotme -s user` (or the scope it
   shows).
 
@@ -302,8 +301,8 @@ Pass: `claude plugin list` shows `dotme` enabled. Optional:
 
 In a session:
 
-The dialog has an optional "only applies when" field and the client's own
-buttons: **Accept** saves the change; **Decline** or closing the dialog
+The dialog shows the change, its scope and the evidence, with no fields to
+fill in, and the client's own buttons: **Accept** saves the change as shown; **Decline** or closing the dialog
 (Escape) keeps it pending with a link, where you approve or reject it. A
 client with no window for the dialog (such as `claude -p`) declines by
 itself, so nothing is lost there.
@@ -329,7 +328,7 @@ out. With a shorter one, such as "test", the agent stops and asks you.
 6. Start a new session. Pass: the pnpm preference from step 3 is in the
    loaded preferences.
 
-Keep the pnpm preference for the Codex test, then remove it in step 6.5.
+Keep the pnpm preference for the Codex test, then remove it in step 6.6.
 
 ### 5.7 A new category
 
@@ -345,6 +344,24 @@ CI covers this with KV storage; this checks it against the GitHub data repo.
    ticked and Allow.
 4. "Call dotme list_categories." Pass: `work` is listed with 0 preferences.
 5. Delete `work.md` from `<data-repo>` and push, unless you want to keep it.
+
+### 5.8 Skills
+
+Use a throwaway line so nothing real lands in your data repo by accident.
+
+1. Add this line to `~/.claude/CLAUDE.md`: `Throwaway import test: I like
+   tabs over spaces.` Run `/dotme-import` (Claude Code may show it as
+   `/dotme:dotme-import`). Pass: the agent calls `whoami`, reads the file,
+   lists numbered candidates including the throwaway line, lists what it
+   skipped, and asks which to propose before calling `propose_change`.
+2. Choose only the throwaway line. Pass: one dialog (or link) whose evidence
+   names `~/.claude/CLAUDE.md` and today's date. Decline it, then reject it
+   on the link. Remove the line from `CLAUDE.md`.
+3. Run `/dotme-review`. Pass: the agent runs `recent-messages.mjs`, the
+   candidates come from things you typed (dates and folders shown), and
+   nothing is proposed before you choose. Answer "none".
+4. Run `node clients/shared/skills/dotme-review/recent-messages.mjs --days 2
+   | head -20`. Pass: only your own prompts, no agent replies or hook output.
 
 ## 6. Codex
 
@@ -428,7 +445,15 @@ means Codex answered on its own. Check `codex features list` for
 `~/.codex/config.toml` is not `never` and does not turn off
 `mcp_elicitations`; note what you find in the table.
 
-### 6.5 Clean up
+### 6.5 Skills
+
+1. In a Codex session, open `/skills`. Pass: `dotme-import` and
+   `dotme-review` are listed. If not, copy them by hand (see the Skills
+   section of `clients/README.md`), and note it in the results table.
+2. Run `$dotme-review 2`. Pass: Codex sessions from step 6.3 appear in what
+   it read, and it asks before proposing. Answer "none".
+
+### 6.6 Clean up
 
 Ask Codex (or Claude Code): "Propose to dotme to remove the pnpm preference
 in coding." Approve it. Pass: a new commit in `<data-repo>` removes it, and
@@ -468,9 +493,11 @@ release blockers; note in the table whether connecting and `whoami` work.
 | 5.3 | Claude Code plugin installs from the marketplace | | |
 | 5.5 | Claude Code SessionStart hook loads preferences | | |
 | 5.6 | Claude Code approval dialog: approve, reject, link fallback | | |
+| 5.8 | Claude Code skills: `/dotme-import`, `/dotme-review` | | |
 | 6.1 | Codex plugin installs, hook trusted | | |
 | 6.3 | Codex hook loads preferences (plugin or manual) | | |
 | 6.4 | Codex link approval, then dialog with `mcp_2026_07_28` | | |
+| 6.5 | Codex lists and runs the skills (plugin or copied) | | |
 | 7 | claude.ai connector, link approval on phone | | |
 | 8 | Tier 2 clients (optional) | | |
 
@@ -483,7 +510,7 @@ release blockers; note in the table whether connecting and `whoami` work.
 | Hook says `not set up on this machine` | `~/.config/dotme/url` or `auth-header` is missing. |
 | Preferences load twice | The old `sync.sh` hook or a hand-added MCP server is still configured; see 5.2. |
 | No dialog, only a link | The connection was authorized without the dialog option (reconnect with it ticked); in Claude Code, the synced `claude.ai dotme` connector hides the plugin's server (5.2); in Codex, `mcp_2026_07_28` is off or not sent (6.4). `npm run wrangler -- tail` shows which. |
-| `whoami` in Claude Code says `claude-ai` | The claude.ai connector hides the plugin's server; add dotme by hand with `claude mcp add` (5.2). |
+| `whoami` in Claude Code says `claude-ai` | This Claude Code version lets the claude.ai connector hide the plugin's server; add dotme by hand with `claude mcp add` (5.2). |
 | The agent stops and asks for evidence | `evidence` is under 10 characters. Say what you said or did, and when. |
 | Codex loads no preferences | Codex 0.164 and later removed plugin hooks; install the manual hook (6.1). |
 | Approval fails with a GitHub error | `GITHUB_TOKEN` expired or lacks Contents write on `<data-repo>`; `<url>/setup/status` says which. Set a new one with `npm run wrangler -- secret put GITHUB_TOKEN`. |
