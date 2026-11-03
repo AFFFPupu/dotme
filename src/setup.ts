@@ -72,10 +72,19 @@ function passphraseCheck(env: SetupEnv): Check {
   return { id: "owner_passphrase", status: "ok", detail: "OWNER_PASSPHRASE is set." };
 }
 
+// The URL clients connect to and every token is bound to. `npm run deploy` pins it with MCP_RESOURCE.
+// A Deploy to Cloudflare install has no MCP_RESOURCE, so it is the address the request reached, which
+// on Workers is always one of the Worker's own hostnames (its workers.dev name or a route it owns).
+export function resourceFor(configured: string | undefined, requestUrl: string): string {
+  return configured || `${new URL(requestUrl).origin}/mcp`;
+}
+
 function resourceCheck(env: SetupEnv, origin: string): Check {
   const expected = `${origin}/mcp`;
   const fix = `Set "url" in dotme.config.json to ${origin}, then run \`npm run deploy\`.`;
-  if (!env.MCP_RESOURCE) return { id: "mcp_resource", status: "fail", detail: "MCP_RESOURCE is not set.", fix };
+  if (!env.MCP_RESOURCE) {
+    return { id: "mcp_resource", status: "ok", detail: `Clients connect to ${expected}, the address this server was reached at (MCP_RESOURCE is not set).` };
+  }
   if (env.MCP_RESOURCE !== expected) {
     return { id: "mcp_resource", status: "fail", detail: `MCP_RESOURCE is ${env.MCP_RESOURCE}, but this server is reached at ${expected}; clients will be refused tokens.`, fix };
   }
@@ -103,7 +112,7 @@ const gh = (fetcher: typeof fetch, token: string, path: string, init: RequestIni
 export async function githubChecks(env: SetupEnv, fetcher: typeof fetch = fetch, now = new Date()): Promise<Check[]> {
   const skip = (id: string): Check => ({ id, status: "skip", detail: "Skipped until the checks above pass." });
   const repo = env.GITHUB_REPO ?? "";
-  const repoFix = 'Set "githubRepo" in dotme.config.json to owner/name of your private data repo, then run `npm run deploy`.';
+  const repoFix = 'Set "githubRepo" in dotme.config.json to owner/name of your private data repo, then run `npm run deploy`. With Deploy to Cloudflare, set the GITHUB_REPO secret instead (Worker settings, Variables and Secrets).';
   if (!/^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/.test(repo)) {
     return [
       { id: "github_repo", status: "fail", detail: env.GITHUB_REPO ? "GITHUB_REPO is not in owner/name form." : "GITHUB_REPO is not set.", fix: repoFix },

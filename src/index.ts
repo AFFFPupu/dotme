@@ -16,20 +16,20 @@ import { hasPasskeys, PASSKEY_SCRIPT } from "./passkeys";
 import { approve, getPreferences, listCategories, listPending, propose } from "./dotme";
 import { CATEGORY_NAME, DEFAULT_CATEGORIES, cleanLine, isCategoryName } from "./prefs";
 import type { Category, Preference } from "./prefs";
-import { setupStatus } from "./setup";
+import { resourceFor, setupStatus } from "./setup";
 import { makeStore } from "./store";
 import type { StoreEnv } from "./store";
 
 interface Env extends StoreEnv {
   OAUTH_PROVIDER: OAuthHelpers;
   OWNER_PASSPHRASE: string;
-  MCP_RESOURCE: string;
+  // The URL clients connect to. Unset in a Deploy to Cloudflare install: see resourceFor.
+  MCP_RESOURCE?: string;
   // Read-only token for scripts that copy the core into a client, such as the Claude Code SessionStart hook.
   EXPORT_TOKEN?: string;
 }
 
 const env = workerEnv as unknown as Env;
-const origin = () => new URL(env.MCP_RESOURCE).origin;
 
 const INSTRUCTIONS = `This server holds the user's personal preferences for AI agents, in categories.
 Read them with get_preferences and follow them. Never claim a preference was saved unless
@@ -121,7 +121,8 @@ function allowed(category: Category) {
   if (!caller().categories.includes(category)) throw new Error(`This connection cannot access ${category}`);
 }
 
-function createServer() {
+// `origin` is this server's public address, for links such as the approval page.
+function createServer(origin: string) {
   const server = new McpServer({ name: "dotme", version: "0.1.0" }, { instructions: INSTRUCTIONS });
   const store = makeStore(env);
   // Categories are files in the store, so the schema checks the name; allowed() checks access.
@@ -226,7 +227,7 @@ function createServer() {
       return text({
         status: "pending approval",
         proposal: proposal.id,
-        approveAt: `${origin()}/approve/${proposal.id}`,
+        approveAt: `${origin}/approve/${proposal.id}`,
         tellUser: "Send the user this link. The change is not saved until they approve it there.",
       });
     }
@@ -241,7 +242,11 @@ function createServer() {
   return server;
 }
 
-const mcpHandler = createMcpHandler(createServer);
+// Built per request, since the server's address can depend on the request (see resourceFor).
+const mcpHandler = (request: Request, env: Env, ctx: ExecutionContext) => {
+  const origin = new URL(resourceFor(env.MCP_RESOURCE, request.url)).origin;
+  return createMcpHandler(() => createServer(origin))(request, env, ctx);
+};
 
 // Preferences as plain Markdown for scripts that copy them into a client at session start, such as
 // the Claude Code and Codex SessionStart hook. The export token is read-only and may read every
@@ -373,26 +378,44 @@ ${details.redirectIsLoopback ? "<p><strong>This sends access to an app on your c
   },
 };
 
-export default new OAuthProvider({
-  authorizeEndpoint: "/authorize",
-  tokenEndpoint: "/oauth/token",
-  clientRegistrationEndpoint: "/oauth/register",
-  apiRoute: "/mcp",
-  apiHandler: {
-    fetch(request: Request, env: Env, ctx: ExecutionContext) {
-      return mcpHandler(request, env, ctx);
-    },
+// One provider per resource. With MCP_RESOURCE set there is only ever one; without it there is one per
+// hostname this Worker answers on, which Cloudflare limits to its own workers.dev name and routes.
+const providers = new Map<string, OAuthProvider<Env>>();
+
+function providerFor(resource: string): OAuthProvider<Env> {
+  let provider = providers.get(resource);
+  if (!provider) {
+    provider = new OAuthProvider<Env>({
+      authorizeEndpoint: "/authorize",
+      tokenEndpoint: "/oauth/token",
+      clientRegistrationEndpoint: "/oauth/register",
+      apiRoute: "/mcp",
+      apiHandler: {
+        fetch(request: Request, env: Env, ctx: ExecutionContext) {
+          return mcpHandler(request, env, ctx);
+        },
+      },
+      defaultHandler: AuthHandler,
+      scopesSupported: ["mcp:read"],
+      requiredScopes: ["mcp:read"],
+      clientIdMetadataDocumentEnabled: true,
+      // Grok Bot signs in through Cursor's OAuth client, which uses cursor://anysphere.cursor-mcp/oauth/callback.
+      // The owner still sees the destination on the consent page and must sign in; PKCE protects the code.
+      allowPrivateUseRedirectUris: true,
+      resourceMetadata: { resource },
+      // OAuth errors carry the failed check only in `internal`; log it so connection problems can be diagnosed.
+      onError({ code, status, internal }) {
+        console.warn(JSON.stringify({ oauthError: code, status, ...internal }));
+      },
+    });
+    if (providers.size < 8) providers.set(resource, provider);
+  }
+  return provider;
+}
+
+export default {
+  fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    const resource = resourceFor(env.MCP_RESOURCE, request.url);
+    return providerFor(resource).fetch(request, env, ctx);
   },
-  defaultHandler: AuthHandler,
-  scopesSupported: ["mcp:read"],
-  requiredScopes: ["mcp:read"],
-  clientIdMetadataDocumentEnabled: true,
-  // Grok Bot signs in through Cursor's OAuth client, which uses cursor://anysphere.cursor-mcp/oauth/callback.
-  // The owner still sees the destination on the consent page and must sign in; PKCE protects the code.
-  allowPrivateUseRedirectUris: true,
-  resourceMetadata: { resource: env.MCP_RESOURCE },
-  // OAuth errors carry the failed check only in `internal`; log it so connection problems can be diagnosed.
-  onError({ code, status, internal }) {
-    console.warn(JSON.stringify({ oauthError: code, status, ...internal }));
-  },
-});
+};

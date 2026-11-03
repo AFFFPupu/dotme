@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { expiryCheck, expiryWarning, githubChecks, parseTokenExpiry, runChecks } from "../src/setup";
+import { expiryCheck, expiryWarning, githubChecks, parseTokenExpiry, resourceFor, runChecks } from "../src/setup";
 
 const now = new Date("2026-11-03T12:00:00Z");
 const inDays = (days: number) => new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
@@ -87,6 +87,14 @@ describe("githubChecks", () => {
   });
 });
 
+describe("resourceFor", () => {
+  it("prefers MCP_RESOURCE and otherwise uses the request's origin", () => {
+    expect(resourceFor("https://dotme.example.dev/mcp", "https://other.example.dev/approve")).toBe("https://dotme.example.dev/mcp");
+    expect(resourceFor(undefined, "https://dotme.someone.workers.dev/mcp?x=1")).toBe("https://dotme.someone.workers.dev/mcp");
+    expect(resourceFor("", "http://localhost:8788/authorize")).toBe("http://localhost:8788/mcp");
+  });
+});
+
 describe("runChecks", () => {
   const origin = "https://dotme.example.dev";
 
@@ -109,6 +117,12 @@ describe("runChecks", () => {
     const checks = await runChecks({ MCP_RESOURCE: "http://localhost:8787/mcp", OAUTH_KV: fakeKV() }, origin, fakeGitHub({ repo: [200] }).fetcher, now);
     expect(byId(checks)).toMatchObject({ owner_passphrase: "fail", mcp_resource: "fail", kv: "ok", github_repo: "fail", export_token: "warn", passkey: "warn" });
     expect(checks.find((c) => c.id === "owner_passphrase")?.fix).toMatch(/^Human:/);
+  });
+
+  it("uses the address it was reached at when MCP_RESOURCE is not set", async () => {
+    const checks = await runChecks({ OAUTH_KV: fakeKV() }, origin, fakeGitHub({ repo: [200] }).fetcher, now);
+    expect(byId(checks).mcp_resource).toBe("ok");
+    expect(checks.find((c) => c.id === "mcp_resource")?.detail).toContain(`${origin}/mcp`);
   });
 
   it("accepts KV storage only on a local server", async () => {
