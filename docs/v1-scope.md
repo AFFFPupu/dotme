@@ -88,5 +88,4 @@ Announcing it on X or LinkedIn is separate and follows Ao's own distribution rul
 
 ## Outside v1, Ao's own setup
 
-- Grok Bot signs in with a `cursor://` callback, which dotme rejected until private-use redirect URIs were allowed; retest after deploying that change (see clients/README.md, section 4).
 - How Ao's memex `core.md` relates to dotme `collab` (they overlap today).

@@ -191,7 +191,7 @@ On the consent page name the agent `grok` or `grok-bot`.
 | Codex | tested | tested | link | Plugin, section 3. |
 | claude.ai | tested | tested | link | Settings > Connectors > Add custom connector. In Claude Code, a claude.ai connector named dotme can shadow the plugin's MCP server. |
 | grok.com | untested | untested | link | |
-| Grok Bot | untested | untested | link | Needs a dotme version that accepts private-use redirect URIs (`cursor://`); older versions reject the sign-in with "Invalid redirect URI". |
+| Grok Bot | tested | tested | link | Tested 2026-11-03: sign-in, `whoami`, `get_preferences` and a link approval. dotme versions before private-use redirect URIs were allowed (`cursor://`) reject the sign-in with "Invalid redirect URI". |
 | ChatGPT, Cursor | untested | untested | link | Any remote MCP client with OAuth should work. |
 
 ## Settings
