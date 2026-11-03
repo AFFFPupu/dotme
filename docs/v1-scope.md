@@ -88,5 +88,4 @@ Announcing it on X or LinkedIn is separate and follows Ao's own distribution rul
 
 ## Outside v1, Ao's own setup
 
-- Grok Bot's OAuth reconnect fails on the Grok and Cursor side; retry via grok.com/connectors.
 - How Ao's memex `core.md` relates to dotme `collab` (they overlap today).

@@ -11,6 +11,20 @@ const agent = process.argv[4] ?? "e2e-test";
 const redirectUri = "http://localhost:9999/callback";
 const b64url = (buf) => buf.toString("base64url");
 
+// Setup status: JSON for agents, a page for browsers, never a secret.
+const status = await (await fetch(`${base}/setup/status`)).json();
+const statusOf = Object.fromEntries(status.checks.map((c) => [c.id, c.status]));
+console.log("setup status:", status.ok, statusOf);
+assert.equal(status.ok, true);
+assert.deepEqual(
+  { passphrase: statusOf.owner_passphrase, resource: statusOf.mcp_resource, kv: statusOf.kv, storage: statusOf.storage },
+  { passphrase: "ok", resource: "ok", kv: "ok", storage: "ok" }
+);
+assert.ok(!JSON.stringify(status).includes(passphrase), "setup status leaks the passphrase");
+const statusPage = await fetch(`${base}/setup/status`, { headers: { Accept: "text/html" } });
+assert.match(statusPage.headers.get("content-type"), /text\/html/);
+assert.ok((await statusPage.text()).includes("dotme setup status"));
+
 const meta = await (await fetch(`${base}/.well-known/oauth-authorization-server`)).json();
 const unauth = await fetch(`${base}/mcp`, { method: "POST" });
 console.log("unauthenticated /mcp:", unauth.status, unauth.headers.get("www-authenticate"));
@@ -46,6 +60,11 @@ console.log("consent POST:", post.status);
 assert.equal(post.status, 302);
 assert.equal(new URL(location).searchParams.get("state"), "xyz");
 const code = new URL(location).searchParams.get("code");
+// Unified login: the passphrase typed on the consent page also signs the owner in to /approve.
+const consentSession = post.headers.getSetCookie().find((c) => c.startsWith("owner_session="))?.split(";")[0];
+const pendingWithConsentSession = consentSession ? await (await fetch(`${base}/approve`, { headers: { Cookie: consentSession } })).text() : "";
+console.log("consent sign-in opens /approve:", pendingWithConsentSession.includes("Pending proposals"));
+assert.ok(pendingWithConsentSession.includes("Pending proposals"));
 
 const token = await (await fetch(meta.token_endpoint, {
   method: "POST",
@@ -113,6 +132,11 @@ let consentPage = "";
 await getToken(base, passphrase, "signed-in-test", { session, onPage: (html) => (consentPage = html) });
 console.log("consent page when signed in: no passphrase field", !consentPage.includes('name="passphrase"'), "| suggested name", /name="agent"[^>]*value="test"/.test(consentPage), "| dialog pre-ticked for a local app", /name="inline" checked/.test(consentPage));
 assert.ok(!consentPage.includes('name="passphrase"') && /name="agent"[^>]*value="test"/.test(consentPage) && /name="inline" checked/.test(consentPage));
+// Grok Bot connects through Cursor's OAuth client, whose callback is a private-use URI scheme.
+let cursorPage = "";
+await getToken(base, passphrase, "grok-bot", { session, redirectUri: "cursor://anysphere.cursor-mcp/oauth/callback", onPage: (html) => (cursorPage = html) });
+console.log("cursor:// callback connects, consent names it:", cursorPage.includes("anysphere.cursor-mcp"), "| dialog not pre-ticked", !/name="inline" checked/.test(cursorPage));
+assert.ok(cursorPage.includes("anysphere.cursor-mcp") && !/name="inline" checked/.test(cursorPage));
 const approvalPage = await (await fetch(`${base}/approve/${id}`, { headers: { Cookie: session } })).text();
 console.log("approval page shows diff:", approvalPage.includes("Prefer Cloudflare over Supabase"), approvalPage.includes("e2e test"));
 assert.ok(approvalPage.includes("Prefer Cloudflare over Supabase") && approvalPage.includes("e2e test"));

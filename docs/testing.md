@@ -152,7 +152,12 @@ curl -sS <url>/                                         # prints: dotme
 curl -sS <url>/.well-known/oauth-authorization-server | head -c 200; echo
 curl -sS -o /dev/null -w '%{http_code}\n' <url>/mcp     # 401: OAuth required
 curl -sS -o /dev/null -w '%{http_code}\n' <url>/export  # 401: token required
+curl -sS <url>/setup/status                             # every check ok, or a fix for each one that is not
 ```
+
+Pass: `/setup/status` says `"ok": true`. `passkey` stays `warn` until section 4,
+and `export_token` until 5.1 if you have not set it yet. Open the same URL in a
+browser for the readable page.
 
 If anything is off, `npm run wrangler -- tail` streams the Worker's logs.
 
@@ -171,6 +176,10 @@ If anything is off, `npm run wrangler -- tail` streams the Worker's logs.
 6. Back in the normal window, click **Add a passkey on this device** on the
    pending list. Pass: `This device already has a dotme passkey.`, not a
    browser error.
+7. Optional, locks passphrase sign-in for 15 minutes from this network: in
+   the private window, type a wrong passphrase four more times. Pass: the
+   fifth says `Too many wrong passphrases`, the right passphrase is refused
+   too, and **Sign in with passkey** still works.
 
 ### 4.2 Phone
 
@@ -265,7 +274,8 @@ Pass: `claude plugin list` shows `dotme` enabled. Optional:
    Allow. Pass: the dialog option is already ticked, because Claude Code is
    an app on this computer. If you signed in to `/approve` in this browser,
    the page says "Signed in as the owner" and asks for no passphrase;
-   otherwise **Sign in with passkey** or the passphrase.
+   otherwise **Sign in with passkey** or the passphrase. Signing in here
+   with the passphrase also signs you in to `/approve` in this browser.
 3. Pass: `/mcp` shows `plugin:dotme:dotme` connected.
 4. The first time an agent calls a dotme tool, Claude Code asks for
    permission. Choose "Yes, and don't ask again". dotme's own approval is
@@ -315,6 +325,21 @@ out. With a shorter one, such as "test", the agent stops and asks you.
    loaded preferences.
 
 Keep the pnpm preference for the Codex test, then remove it in step 6.5.
+
+### 5.7 A new category
+
+CI covers this with KV storage; this checks it against the GitHub data repo.
+
+1. In `<data-repo>`, add `work.md` at the root with one line, `# work`, and
+   push.
+2. In the Claude Code session from 5.6: "Call dotme list_categories."
+   Pass: `work` is not listed, because this connection was authorized
+   before the file existed.
+3. Run `/mcp`, pick `plugin:dotme:dotme` and authenticate again. Pass: the
+   consent page lists `work` after `collab`, `coding` and `life`. Keep it
+   ticked and Allow.
+4. "Call dotme list_categories." Pass: `work` is listed with 0 preferences.
+5. Delete `work.md` from `<data-repo>` and push, unless you want to keep it.
 
 ## 6. Codex
 
@@ -456,4 +481,4 @@ release blockers; note in the table whether connecting and `whoami` work.
 | `whoami` in Claude Code says `claude-ai` | The claude.ai connector hides the plugin's server; add dotme by hand with `claude mcp add` (5.2). |
 | The agent stops and asks for evidence | `evidence` is under 10 characters. Say what you said or did, and when. |
 | Codex loads no preferences | Codex 0.164 and later removed plugin hooks; install the manual hook (6.1). |
-| Approval fails with a GitHub error | `GITHUB_TOKEN` expired or lacks Contents write on `<data-repo>`; set a new one with `npm run wrangler -- secret put GITHUB_TOKEN`. |
+| Approval fails with a GitHub error | `GITHUB_TOKEN` expired or lacks Contents write on `<data-repo>`; `<url>/setup/status` says which. Set a new one with `npm run wrangler -- secret put GITHUB_TOKEN`. |

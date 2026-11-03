@@ -22,7 +22,10 @@ to Cloudflare Workers; the design and v1 plan are in
 - `/approve`: owner page. Shows each proposal's diff, evidence and conflicts;
   approve (optionally scoped with "only applies when"), or reject. Sign in
   with the passphrase once per device, then set up a passkey right there to
-  use Face ID or Touch ID from then on.
+  use Face ID or Touch ID from then on. The consent page and `/approve` share
+  one owner session, so signing in on either signs you in on both. After 5
+  wrong passphrases from one address, passphrase sign-in is locked for 15
+  minutes there; passkeys still work.
 - Approval in the client: connections you trust (Claude Code) can show the
   proposal in their own dialog instead of a link. Accept saves; Decline or
   closing it falls back to the link.
@@ -32,6 +35,11 @@ to Cloudflare Workers; the design and v1 plan are in
 - Storage: the private repo in `GITHUB_REPO` (one Markdown file per
   category, `pending/` for open proposals), or KV with `STORAGE=kv` for
   local development.
+- Categories: `collab`, `coding` and `life` always exist. Add your own by
+  pushing a Markdown file with a lowercase name, such as `work.md`, to the
+  root of the data repo. Existing connections do not see it until you
+  connect them again and tick it on the consent page, so a new private
+  category never leaks to an agent you already trusted.
 
 ## Run locally
 
@@ -66,6 +74,21 @@ npm run deploy
 | `url` | The Worker's origin, `https://<workerName>.<your-subdomain>.workers.dev`. Clients connect to `<url>/mcp`. |
 | `kvNamespaceId` | The id printed by `kv namespace create`. |
 | `githubRepo` | Your private data repo, `owner/name`. Seed it with the example files in `seed/`. |
+
+Then check the install:
+
+```bash
+curl -sS <url>/setup/status   # JSON; open it in a browser for a readable page
+```
+
+It reports each piece as `ok`, `warn`, `fail` or `skip`: the passphrase, the
+`MCP_RESOURCE` URL, KV, the data repo (reachable and private), the GitHub
+token (accepted, can write, and its expiry), the export token and passkeys.
+Each item that is not `ok` says how to fix it, and fixes only a human can do
+(typing a secret, adding a passkey) start with `Human:`. It never shows secret
+values. `ok: true` means dotme works; `allGreen: true` means nothing is left.
+From 30 days before the GitHub token expires, the status page and the approval
+page show a warning.
 
 Connect a client to `<url>/mcp`.
 

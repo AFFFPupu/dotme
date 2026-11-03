@@ -3,8 +3,18 @@
 //   - Prefer Cloudflare over Supabase for personal projects.
 //     id: p-3f9a · when: personal projects · since: 2026-10-29 · by: grok-bot
 
-export const CATEGORIES = ["collab", "coding", "life"] as const;
-export type Category = (typeof CATEGORIES)[number];
+// A category is any `<name>.md` file at the root of the data repo. These three always exist, even
+// before their file does, and are what connections authorized before categories were recorded see.
+export const DEFAULT_CATEGORIES = ["collab", "coding", "life"] as const;
+export type Category = string;
+
+// Lowercase names only, so README.md and similar files in the data repo are never categories,
+// and a name can never reach another path.
+export const CATEGORY_NAME = /^[a-z0-9][a-z0-9-]{0,31}$/;
+
+export function isCategoryName(value: unknown): value is Category {
+  return typeof value === "string" && CATEGORY_NAME.test(value);
+}
 
 export interface Preference {
   id: string;

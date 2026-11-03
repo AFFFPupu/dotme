@@ -2,9 +2,9 @@
 import { createHash, randomBytes } from "node:crypto";
 
 // With `session` (an owner_session cookie), the consent form is sent without the passphrase;
-// `onPage` receives the consent page's HTML.
-export async function getToken(base, passphrase, agent, { inline = false, session, onPage } = {}) {
-  const redirectUri = "http://localhost:9999/callback";
+// `onPage` receives the consent page's HTML; `categories` are the boxes to tick.
+// `redirectUri` sets the callback the test client registers.
+export async function getToken(base, passphrase, agent, { inline = false, session, onPage, categories = ["collab", "coding", "life"], redirectUri = "http://localhost:9999/callback" } = {}) {
   const meta = await (await fetch(`${base}/.well-known/oauth-authorization-server`)).json();
   const client = await (await fetch(meta.registration_endpoint, {
     method: "POST",
@@ -24,7 +24,7 @@ export async function getToken(base, passphrase, agent, { inline = false, sessio
   const body = await page.text();
   onPage?.(body);
   const handle = body.match(/name="handle" value="([^"]+)"/)[1];
-  const fields = [["handle", handle], ["agent", agent], ...(session ? [] : [["passphrase", passphrase]]), ["decision", "approve"], ["category", "collab"], ["category", "coding"], ["category", "life"]];
+  const fields = [["handle", handle], ["agent", agent], ...(session ? [] : [["passphrase", passphrase]]), ["decision", "approve"], ...categories.map((c) => ["category", c])];
   if (inline) fields.push(["inline", "on"]);
   const post = await fetch(authUrl, {
     method: "POST", redirect: "manual",
