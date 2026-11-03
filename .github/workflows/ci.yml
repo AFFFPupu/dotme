@@ -24,6 +24,8 @@ jobs:
       - run: npm ci
       - name: Typecheck
         run: npm run typecheck
+      - name: Plugin hook copies in sync
+        run: npm run check:plugins
       - name: Unit tests
         run: npm test
       - name: End-to-end against wrangler dev (KV storage)
