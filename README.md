@@ -8,7 +8,8 @@ as one commit.
 
 Early: a working server, not yet a release. Each user deploys their own copy
 to Cloudflare Workers; the design and v1 plan are in
-[docs/v1-scope.md](docs/v1-scope.md).
+[docs/v1-scope.md](docs/v1-scope.md). To test a deploy end to end, follow
+[docs/testing.md](docs/testing.md).
 
 ## How it works
 
