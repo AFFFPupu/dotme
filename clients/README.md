@@ -9,12 +9,28 @@ last copy it fetched.
 
 | | Claude Code | Codex |
 |---|---|---|
-| SessionStart hook | in the plugin | in the plugin |
+| SessionStart hook | in the plugin | a manual `~/.codex/hooks.json` entry (Codex 0.164 and later removed plugin hooks) |
 | MCP connection | in the plugin | one `codex mcp add` command |
-| Approval dialog in the client | when you tick it on the consent page | also needs `mcp_2026_07_28`, see below |
+| Approval dialog in the client | yes | not yet, see below |
 
 The hook loads `collab,coding` by default. `life` stays out of coding
 sessions unless you add it.
+
+## What you choose, and what to pick
+
+Connecting a client asks you a few things. The defaults are the right answer
+almost always.
+
+| Where | Choice | Pick |
+|---|---|---|
+| Plugin install (Claude Code) | Server URL | Your dotme URL, `https://<worker>`. |
+| Plugin install (Claude Code) | Categories loaded at session start | Keep `collab,coding`. This only controls what is copied into each new session; add `life` if you want it there too. |
+| Consent page | Agent name | Pre-filled from the app's name. Use a short stable name such as `claude-code` or `codex`; it is stamped on every proposal from this app. |
+| Consent page | Categories | Keep all ticked unless you want to hide one from this app. This controls what the app may read and propose to through MCP. |
+| Consent page | Approve in this app's own dialog | Pre-ticked for apps on your computer (Claude Code, Codex), off for web apps. An app that cannot show a dialog gets a link anyway. Untick it for an app you do not fully trust. |
+| Consent page | Passphrase | Not asked when you are already signed in to `/approve` in this browser. Otherwise sign in with your passkey, or type the passphrase. |
+| First tool call in the client | Allow dotme's tools | "Yes, and don't ask again" (or Codex's equivalent). Reading is harmless, and a proposal saves nothing until you approve it. |
+| The approval dialog | Accept, Decline, or close | Accept saves, Decline drops, closing it keeps the proposal pending with a link. |
 
 Commands below use two placeholders:
 
@@ -65,10 +81,20 @@ claude plugin install dotme@dotme --config server_url=https://<worker> --config 
 Inside a session the same is `/plugin install dotme --marketplace <repo>`,
 which asks for the server URL.
 
-Then connect the MCP server once: run `/mcp`, pick `dotme`, and sign in on
-the consent page. Name the agent `claude-code` and tick "Let this app ask me
-to approve changes in its own dialog". Start a new session; it opens with your
-preferences.
+Then connect the MCP server once: run `/mcp`, pick `plugin:dotme:dotme`,
+and Allow on the consent page with the agent name `claude-code`. Start a new
+session; it opens with your preferences.
+
+The dialog shows the change and the evidence, with an optional "only applies
+when" field. **Accept** saves it, **Decline** drops it, and closing the
+dialog keeps it pending with a link to the approval page.
+
+**If you also use dotme on claude.ai.** Claude Code syncs your claude.ai
+connectors in. The synced `claude.ai dotme` has the same URL as the plugin's
+server and wins, so the session acts as your `claude-ai` agent and gets links
+instead of the dialog (`whoami` shows it). Run `/mcp`, pick
+`claude.ai dotme` and choose Disable. Claude Code remembers this per
+directory.
 
 To change which categories the hook loads, run
 `/plugin configure dotme@dotme`, or reinstall with
@@ -86,38 +112,16 @@ and remove a `dotme` MCP server you added by hand (`claude mcp remove dotme
 codex plugin marketplace add <repo>
 ```
 
-Install and enable `dotme` from that marketplace in `/plugins`. Codex asks
-you to review and trust the plugin's hook before it runs it.
+Install and enable `dotme` from that marketplace in `/plugins`.
 
-Connect the MCP server; the URL is yours, so it is not in the plugin:
-
-```bash
-codex mcp add dotme --url https://<worker>/mcp
-codex mcp login dotme
-```
-
-On the consent page, name the agent `codex` and tick the dialog option.
-
-**Approval dialogs.** Codex shows dotme's approval dialog only with the MCP
-protocol version 2026-07-28 turned on. The plugin leaves your global flags
-alone; to turn it on, add this to `~/.codex/config.toml`:
-
-```toml
-[features]
-mcp_2026_07_28 = true
-```
-
-Without it, the agent gives you a link to the approval page instead, which
-works the same.
-
-**If the plugin's hook does not run** in your Codex build, add the hook
-yourself:
+**Add the hook by hand.** Codex 0.164 and later list `plugin_hooks` as
+removed, so the hook inside the plugin does not run. Copy it out:
 
 ```bash
 cp clients/shared/session-start.sh ~/.config/dotme/session-start.sh
 ```
 
-and in `~/.codex/hooks.json`:
+and add it to `~/.codex/hooks.json` (merge it in if the file exists):
 
 ```json
 {
@@ -128,6 +132,35 @@ and in `~/.codex/hooks.json`:
   }
 }
 ```
+
+Codex asks you to review and trust the hook in the next session. The plugin
+keeps its own copy of the hook for Codex builds that still run plugin hooks;
+use one or the other, not both, or preferences load twice.
+
+Connect the MCP server; the URL is yours, so it is not in the plugin:
+
+```bash
+codex mcp add dotme --url https://<worker>/mcp
+codex mcp login dotme
+```
+
+On the consent page, set the agent name to `codex` and Allow.
+
+**Approval dialogs (experimental).** Codex can only show dotme's approval
+dialog with the MCP protocol version 2026-07-28, which is behind a flag. You
+do not need it: without it you approve on a link. The plugin leaves your
+global flags alone; to try it, add this to `~/.codex/config.toml`:
+
+```toml
+[features]
+mcp_2026_07_28 = true
+```
+
+Without it, the agent gives you a link to the approval page instead, which
+works the same. In testing, Codex 0.166 still gave a link with the flag on.
+To see what Codex sends, run `npm run wrangler -- tail` while it proposes;
+each proposal logs the protocol version and client capabilities it arrived
+with.
 
 ## Settings
 

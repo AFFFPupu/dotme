@@ -162,17 +162,28 @@ If anything is off, `npm run wrangler -- tail` streams the Worker's logs.
 
 1. Open `<url>/approve` in your browser.
 2. **Human only:** sign in with the passphrase. You land on the pending list.
-3. Click **Set up a passkey** (or **Add a passkey on this device**) and
-   confirm with Touch ID.
+3. Pass: a box at the top says you signed in with the passphrase and offers
+   **Set up a passkey**. Click it and confirm with Touch ID. The page reloads
+   without the box.
 4. Open `<url>/approve` in a private window. Pass: a **Sign in with passkey**
    button is shown, and it signs you in with Touch ID, no passphrase.
 5. Type a wrong passphrase once. Pass: `Wrong passphrase.` and no sign-in.
+6. Back in the normal window, click **Add a passkey on this device** on the
+   pending list. Pass: `This device already has a dotme passkey.`, not a
+   browser error.
 
 ### 4.2 Phone
 
-1. Open `<url>/approve` on the phone and sign in with the passphrase.
-2. Add a passkey on the phone (Face ID).
-3. Open the page in a private tab. Pass: the passkey signs you in.
+The phone usually first sees dotme through an approval link, so test that
+path:
+
+1. Have any agent propose a throwaway preference (see 7.3) and open its
+   `<url>/approve/q-...` link on the phone, signed out.
+2. Sign in with the passphrase. Pass: you land on that proposal, with the
+   **Set up a passkey** box above it.
+3. Set up the passkey with Face ID. Pass: you stay on the same proposal and
+   it is still pending. Reject it.
+4. Open `<url>/approve` in a private tab. Pass: the passkey signs you in.
 
 The owner session lasts 30 days per browser.
 
@@ -220,6 +231,12 @@ So preferences are not loaded twice:
 - If you added the MCP server by hand, remove it:
   `claude mcp list`, then `claude mcp remove dotme -s user` (or the scope it
   shows).
+- If you added dotme as a connector on claude.ai, Claude Code syncs it in as
+  `claude.ai dotme`, with the same URL as the plugin's server, and uses it
+  instead. That connection is named `claude-ai` and cannot show the dialog.
+  After 5.4, run `/mcp`, pick `claude.ai dotme` and choose Disable. Claude
+  Code remembers this per directory, so repeat it in each project, or remove
+  the connector from claude.ai if you only use dotme in Claude Code.
 
 ### 5.3 Install the plugin from main
 
@@ -240,13 +257,19 @@ Pass: `claude plugin list` shows `dotme` enabled. Optional:
 
 ### 5.4 Connect the MCP server
 
-1. Start `claude`, run `/mcp`, pick `dotme`, choose to authenticate.
-2. **Human only:** on the consent page, name the agent `claude-code`, keep
-   `collab` and `coding` ticked (add `life` if you want), tick **Let this app
-   ask me to approve changes in its own dialog**, and click Allow. If you
-   signed in to `/approve` in this browser, no passphrase is needed;
-   otherwise type it.
-3. Pass: `/mcp` shows `dotme` connected.
+1. Start `claude`, run `/mcp`, pick `plugin:dotme:dotme`, choose to
+   authenticate.
+2. **Human only:** on the consent page, set the agent name to `claude-code`
+   (it is pre-filled from the app's name), keep the categories, and click
+   Allow. Pass: the dialog option is already ticked, because Claude Code is
+   an app on this computer. If you signed in to `/approve` in this browser,
+   the page says "Signed in as the owner" and asks for no passphrase;
+   otherwise **Sign in with passkey** or the passphrase.
+3. Pass: `/mcp` shows `plugin:dotme:dotme` connected.
+4. The first time an agent calls a dotme tool, Claude Code asks for
+   permission. Choose "Yes, and don't ask again". dotme's own approval is
+   the real check for changes, so a second prompt per proposal adds
+   nothing.
 
 ### 5.5 The hook
 
@@ -263,18 +286,28 @@ Pass: `claude plugin list` shows `dotme` enabled. Optional:
 
 In a session:
 
-1. "Call dotme whoami." Pass: agent `claude-code`, the categories you ticked.
+The dialog has an optional "only applies when" field and the client's own
+buttons: **Accept** saves the change, **Decline** drops it, and closing the
+dialog (Escape) keeps it pending with a link.
+
+`evidence` must be at least 10 characters, so the prompts below spell it
+out. With a shorter one, such as "test", the agent stops and asks you.
+
+1. "Call dotme whoami." Pass: agent `claude-code`, `inlineApproval: true`,
+   the categories you ticked. If the agent is `claude-ai`, see 5.2.
 2. "Propose to dotme, in coding: I prefer pnpm over npm in new projects.
-   Evidence: I said so just now." Pass: Claude Code shows a dotme dialog with
-   the change and evidence, offering approve or reject.
-3. **Human only:** approve. Pass: the tool answers `approved and saved`, and
+   Evidence: I said so in this session, during the dotme test." Pass: Claude
+   Code shows a dotme dialog with the change and evidence.
+3. **Human only:** Accept. Pass: the tool answers `approved and saved`, and
    `<data-repo>` has a new commit touching `coding.md` that names
    `claude-code` and the evidence.
-4. Propose another throwaway preference and reject it in the dialog. Pass:
-   `Nothing was saved.` and no new commit.
-5. Propose a third one and dismiss the dialog (Escape). Pass: the agent gives
-   you a `<url>/approve/q-...` link. Open it, check the diff and evidence,
-   then reject it there.
+4. "Propose to dotme, in coding: Throwaway test preference two. Evidence:
+   dotme test run, step 5.6.4." Decline it. Pass: `Nothing was saved.` and
+   no new commit.
+5. "Propose to dotme, in coding: Throwaway test preference three. Evidence:
+   dotme test run, step 5.6.5." Close the dialog with Escape. Pass: the agent
+   gives you a `<url>/approve/q-...` link. Open it, check the diff and
+   evidence, then reject it there.
 6. Start a new session. Pass: the pnpm preference from step 3 is in the
    loaded preferences.
 
@@ -282,43 +315,24 @@ Keep the pnpm preference for the Codex test, then remove it in step 6.5.
 
 ## 6. Codex
 
-### 6.1 Install the plugin from main
+### 6.1 Install the plugin and the hook
 
 ```bash
 codex plugin marketplace add <repo>
 ```
 
 (Or the local checkout path, as in 5.3.) In Codex, open `/plugins`, install
-and enable `dotme`. **Human only:** Codex asks you to review and trust the
-plugin's hook; trust it.
+and enable `dotme`.
 
-### 6.2 Connect the MCP server
-
-```bash
-codex mcp add dotme --url <url>/mcp
-codex mcp login dotme
-```
-
-**Human only:** on the consent page, name the agent `codex`, tick the
-categories and the dialog option, and Allow.
-
-Pass: `codex mcp list` shows `dotme`.
-
-### 6.3 The hook and the cross-agent check
-
-1. Start a new Codex session.
-2. Ask: "Which dotme preferences were loaded at the start of this session?"
-3. Pass: the list includes the pnpm preference you approved in Claude Code.
-   This is the core promise: said once in one agent, followed in the next.
-
-If no preferences are loaded, the plugin hook did not run in your Codex
-build. Add the hook by hand and try again:
+Codex 0.164 and later list `plugin_hooks` as removed, so the plugin's hook
+never runs there. Install the hook by hand (check with
+`codex features list | grep plugin_hooks`; skip this only if it is on):
 
 ```bash
 cp clients/shared/session-start.sh ~/.config/dotme/session-start.sh
 ```
 
-`~/.codex/hooks.json`:
+`~/.codex/hooks.json` (merge into it if the file exists):
 
 ```json
 {
@@ -330,12 +344,38 @@ cp clients/shared/session-start.sh ~/.config/dotme/session-start.sh
 }
 ```
 
-Note which way worked in the results table.
+**Human only:** the next session asks you to review and trust the hook;
+trust it.
+
+### 6.2 Connect the MCP server
+
+```bash
+codex mcp add dotme --url <url>/mcp
+codex mcp login dotme
+```
+
+**Human only:** on the consent page, set the agent name to `codex`, keep
+the categories and the ticked dialog option, and Allow. If Codex asks
+whether to allow a dotme tool call, allow it for the session or always.
+
+Pass: `codex mcp list` shows `dotme`.
+
+### 6.3 The hook and the cross-agent check
+
+1. Start a new Codex session.
+2. Ask: "Which dotme preferences were loaded at the start of this session?"
+3. Pass: the list includes the pnpm preference you approved in Claude Code.
+   This is the core promise: said once in one agent, followed in the next.
+
+If no preferences are loaded, check that `~/.codex/hooks.json` is in place
+and trusted (6.1). Note which hook worked, plugin or manual, in the results
+table.
 
 ### 6.4 Approval: link, then dialog
 
-1. Without any feature flag, ask Codex to propose a throwaway preference.
-   Pass: it gives you a `<url>/approve/q-...` link. Reject it on the page.
+1. Without any feature flag: "Propose to dotme, in coding: Throwaway test
+   preference four. Evidence: dotme test run, step 6.4.1." Pass: it gives you
+   a `<url>/approve/q-...` link. Reject it on the page.
 2. Turn on the newer MCP protocol in `~/.codex/config.toml`:
 
    ```toml
@@ -343,8 +383,17 @@ Note which way worked in the results table.
    mcp_2026_07_28 = true
    ```
 
-3. Start a new session and propose another throwaway preference. Pass: Codex
-   shows dotme's approval dialog. Reject it. Pass: `Nothing was saved.`
+3. Start a new session and propose another throwaway preference the same
+   way (step 6.4.3). Pass: Codex shows dotme's approval dialog. Decline it.
+   Pass: `Nothing was saved.`
+
+If Codex still gives a link, run `npm run wrangler -- tail` in your checkout
+while proposing. Each proposal logs one line such as
+`{"proposal":{"agent":"codex","inlineApproval":true,"protocolVersion":null,"clientCapabilities":null,"dialog":false}}`.
+`inlineApproval: false` means the connection was authorized without the
+dialog option: reconnect and tick it. `protocolVersion: null` or no
+`elicitation` in `clientCapabilities` means Codex did not send the newer
+protocol, so it is a Codex limit; note it in the table.
 
 ### 6.5 Clean up
 
@@ -356,13 +405,14 @@ in coding." Approve it. Pass: a new commit in `<data-repo>` removes it, and
 
 1. In claude.ai, open Settings, Connectors. If dotme is not there, add a
    custom connector with the URL `<url>/mcp`, connect, and on the consent
-   page name the agent `claude-ai`. Leave the dialog option unticked;
-   claude.ai approves through the link.
+   page set the agent name to `claude-ai`. Pass: the dialog option is
+   unticked, because claude.ai is a web app; it approves through the link.
 2. In a new chat with the connector on: "Call dotme whoami, then show my
    collab preferences." Pass: agent `claude-ai`, and the preferences match
    your data repo.
-3. "Propose to dotme: <a throwaway preference>." Pass: Claude gives a
-   `<url>/approve/q-...` link.
+3. "Propose to dotme, in collab: Throwaway test preference five. Evidence:
+   dotme test run, step 7.3." Pass: Claude gives a `<url>/approve/q-...`
+   link.
 4. Open the link **on your phone**, sign in with the passkey, and reject.
    Pass: the proposal is gone from `<url>/approve`.
 
@@ -399,5 +449,8 @@ release blockers; note in the table whether connecting and `whoami` work.
 | Hook says `the export token was refused (HTTP 401)` | `~/.config/dotme/auth-header` does not match the server's `EXPORT_TOKEN`; redo 5.1. Setting a new token on one machine breaks the old one on others; copy the two files instead. |
 | Hook says `not set up on this machine` | `~/.config/dotme/url` or `auth-header` is missing. |
 | Preferences load twice | The old `sync.sh` hook or a hand-added MCP server is still configured; see 5.2. |
-| No dialog, only a link | The connection was authorized without the dialog option (reconnect and tick it), or, in Codex, `mcp_2026_07_28` is off. |
+| No dialog, only a link | The connection was authorized without the dialog option (reconnect with it ticked); in Claude Code, the synced `claude.ai dotme` connector is used instead of the plugin (5.2); in Codex, `mcp_2026_07_28` is off or not sent (6.4). `npm run wrangler -- tail` shows which. |
+| `whoami` in Claude Code says `claude-ai` | The claude.ai connector shadows the plugin's server; disable `claude.ai dotme` in `/mcp` (5.2). |
+| The agent stops and asks for evidence | `evidence` is under 10 characters. Say what you said or did, and when. |
+| Codex loads no preferences | Codex 0.164 and later removed plugin hooks; install the manual hook (6.1). |
 | Approval fails with a GitHub error | `GITHUB_TOKEN` expired or lacks Contents write on `<data-repo>`; set a new one with `npm run wrangler -- secret put GITHUB_TOKEN`. |

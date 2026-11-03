@@ -1,6 +1,7 @@
 // End-to-end check of the OAuth + MCP flow against a running server.
 // Exits non-zero on the first failed check.
 // Usage: node scripts/e2e.mjs [baseUrl] [passphrase] [agentName]
+import { getToken } from "./oauth.mjs";
 import assert from "node:assert/strict";
 import { createHash, randomBytes } from "node:crypto";
 
@@ -103,6 +104,15 @@ assert.equal(wrong.headers.getSetCookie().length, 0);
 
 const signin = await ownerPost(`/approve/${id}`, { action: "signin", passphrase });
 const session = signin.headers.getSetCookie().map((c) => c.split(";")[0]).join("; ");
+console.log("signin lands on:", signin.headers.get("location"));
+assert.equal(signin.headers.get("location"), `/approve/${id}?passkey=offer`);
+const offerPage = await (await fetch(`${base}/approve/${id}?passkey=offer`, { headers: { Cookie: session } })).text();
+console.log("passkey offer on the proposal page:", offerPage.includes("Set up a passkey"), offerPage.includes("Prefer Cloudflare over Supabase"));
+assert.ok(offerPage.includes("Set up a passkey") && offerPage.includes("Prefer Cloudflare over Supabase"));
+let consentPage = "";
+await getToken(base, passphrase, "signed-in-test", { session, onPage: (html) => (consentPage = html) });
+console.log("consent page when signed in: no passphrase field", !consentPage.includes('name="passphrase"'), "| suggested name", /name="agent"[^>]*value="test"/.test(consentPage), "| dialog pre-ticked for a local app", /name="inline" checked/.test(consentPage));
+assert.ok(!consentPage.includes('name="passphrase"') && /name="agent"[^>]*value="test"/.test(consentPage) && /name="inline" checked/.test(consentPage));
 const approvalPage = await (await fetch(`${base}/approve/${id}`, { headers: { Cookie: session } })).text();
 console.log("approval page shows diff:", approvalPage.includes("Prefer Cloudflare over Supabase"), approvalPage.includes("e2e test"));
 assert.ok(approvalPage.includes("Prefer Cloudflare over Supabase") && approvalPage.includes("e2e test"));
