@@ -28,7 +28,7 @@ export interface Proposal {
 
 export function parsePreferences(markdown: string): Preference[] {
   const prefs: Preference[] = [];
-  const lines = markdown.split("\n");
+  const lines = markdown.split(/\r?\n/);
   for (let i = 0; i < lines.length; i++) {
     const item = lines[i].match(/^- (.+)$/);
     if (!item) continue;
