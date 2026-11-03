@@ -198,9 +198,12 @@ printf '%s\n' "<url>" > ~/.config/dotme/url
   printf '%s' "$t" | npm run -s wrangler -- secret put EXPORT_TOKEN )
 ```
 
-The server keeps one export token, so running this again replaces it. On a
-second computer, copy `~/.config/dotme/url` and `~/.config/dotme/auth-header`
-over instead of running it there.
+The server keeps one export token, so running this again replaces it and
+the hook on every other computer stops loading preferences. On a second
+computer, copy `~/.config/dotme/url` and `~/.config/dotme/auth-header` over
+instead of running it there. The export token is only for the session hooks:
+clients connected with OAuth (claude.ai, Grok, the MCP connections of Claude
+Code and Codex) are not affected by it.
 
 **Check:** `sh clients/shared/session-start.sh | head -3` says
 `fetched at session start`, and `/setup/status` shows `export_token` as `ok`.
@@ -304,8 +307,11 @@ data repo keeps your preferences.
 4. Step 6. `/setup/status` should already show the secrets as `ok`. Redo
    step 7 only for an item that is not; `github_token_expiry` warns 30 days
    before the GitHub token expires.
-5. Step 8 only on a computer without `~/.config/dotme/auth-header`. Step 9
-   only if `passkey` is not `ok`.
+5. Keep `~/.config/dotme/url` and `~/.config/dotme/auth-header`. If you
+   cleared them, copy them back from a backup or another computer: the old
+   token still matches the server. Run step 8 only when no copy exists, and
+   check with the session hook either way. Step 9 only if `passkey` is not
+   `ok`.
 6. Step 10 for clients not connected yet. Existing connections keep working.
 
 Upgrading from the old hand-written hook (`~/.config/dotme/sync.sh` in
