@@ -323,7 +323,7 @@ out. With a shorter one, such as "test", the agent stops and asks you.
 6. Start a new session. Pass: the pnpm preference from step 3 is in the
    loaded preferences.
 
-Keep the pnpm preference for the Codex test, then remove it in step 6.5.
+Keep the pnpm preference for the Codex test, then remove it in step 6.6.
 
 ### 5.7 A new category
 
@@ -339,6 +339,24 @@ CI covers this with KV storage; this checks it against the GitHub data repo.
    ticked and Allow.
 4. "Call dotme list_categories." Pass: `work` is listed with 0 preferences.
 5. Delete `work.md` from `<data-repo>` and push, unless you want to keep it.
+
+### 5.8 Skills
+
+Use a throwaway line so nothing real lands in your data repo by accident.
+
+1. Add this line to `~/.claude/CLAUDE.md`: `Throwaway import test: I like
+   tabs over spaces.` Run `/dotme-import` (Claude Code may show it as
+   `/dotme:dotme-import`). Pass: the agent calls `whoami`, reads the file,
+   lists numbered candidates including the throwaway line, lists what it
+   skipped, and asks which to propose before calling `propose_change`.
+2. Choose only the throwaway line. Pass: one dialog (or link) whose evidence
+   names `~/.claude/CLAUDE.md` and today's date. Decline it, then reject it
+   on the link. Remove the line from `CLAUDE.md`.
+3. Run `/dotme-review`. Pass: the agent runs `recent-messages.mjs`, the
+   candidates come from things you typed (dates and folders shown), and
+   nothing is proposed before you choose. Answer "none".
+4. Run `node clients/shared/skills/dotme-review/recent-messages.mjs --days 2
+   | head -20`. Pass: only your own prompts, no agent replies or hook output.
 
 ## 6. Codex
 
@@ -422,7 +440,15 @@ means Codex answered on its own. Check `codex features list` for
 `~/.codex/config.toml` is not `never` and does not turn off
 `mcp_elicitations`; note what you find in the table.
 
-### 6.5 Clean up
+### 6.5 Skills
+
+1. In a Codex session, open `/skills`. Pass: `dotme-import` and
+   `dotme-review` are listed. If not, copy them by hand (see the Skills
+   section of `clients/README.md`), and note it in the results table.
+2. Run `$dotme-review 2`. Pass: Codex sessions from step 6.3 appear in what
+   it read, and it asks before proposing. Answer "none".
+
+### 6.6 Clean up
 
 Ask Codex (or Claude Code): "Propose to dotme to remove the pnpm preference
 in coding." Approve it. Pass: a new commit in `<data-repo>` removes it, and
@@ -462,9 +488,11 @@ release blockers; note in the table whether connecting and `whoami` work.
 | 5.3 | Claude Code plugin installs from the marketplace | | |
 | 5.5 | Claude Code SessionStart hook loads preferences | | |
 | 5.6 | Claude Code approval dialog: approve, reject, link fallback | | |
+| 5.8 | Claude Code skills: `/dotme-import`, `/dotme-review` | | |
 | 6.1 | Codex plugin installs, hook trusted | | |
 | 6.3 | Codex hook loads preferences (plugin or manual) | | |
 | 6.4 | Codex link approval, then dialog with `mcp_2026_07_28` | | |
+| 6.5 | Codex lists and runs the skills (plugin or copied) | | |
 | 7 | claude.ai connector, link approval on phone | | |
 | 8 | Tier 2 clients (optional) | | |
 

@@ -1,7 +1,8 @@
 # Client plugins
 
-dotme ships a plugin for Claude Code and one for Codex. Both run the same
-SessionStart hook (`shared/session-start.sh`): at the start of every session
+dotme ships a plugin for Claude Code and one for Codex. Both bundle two
+skills, `/dotme-import` and `/dotme-review` (see [Skills](#skills)), and run
+the same SessionStart hook (`shared/session-start.sh`): at the start of every session
 it fetches your preferences from your dotme server and prints them, and the
 client adds them to the session's context. Agents follow them without having
 to remember to call a tool. When the server is unreachable, the hook uses the
@@ -12,6 +13,7 @@ last copy it fetched.
 | SessionStart hook | in the plugin | `npm run codex:hook` adds it to `~/.codex/hooks.json` (Codex 0.164 and later removed plugin hooks) |
 | MCP connection | in the plugin | one `codex mcp add` command |
 | Approval dialog in the client | yes | yes, with `mcp_2026_07_28` on (see below) |
+| Skills | in the plugin | in the plugin (untested, see [Skills](#skills)) |
 
 The hook loads `collab,coding` by default. `life` stays out of coding
 sessions unless you add it.
@@ -209,6 +211,46 @@ On the consent page name the agent `grok` or `grok-bot`.
 | Grok Bot | tested | tested | link | Tested 2026-11-03: sign-in, `whoami`, `get_preferences` and a link approval. dotme versions before private-use redirect URIs were allowed (`cursor://`) reject the sign-in with "Invalid redirect URI". |
 | ChatGPT, Cursor | untested | untested | link | Any remote MCP client with OAuth should work. |
 
+## Skills
+
+Both plugins ship two skills. Each one asks you before it proposes anything,
+and every proposal still needs your approval.
+
+| Skill | What it does |
+|---|---|
+| `/dotme-import` | Reads `~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md` and any memory export you paste or point it to (ChatGPT, claude.ai), picks the lasting personal preferences, skips project-specific lines, secrets and what dotme already holds, and lists them for you to choose from. |
+| `/dotme-review` | Reads what you typed in your recent Claude Code and Codex sessions (default 7 days; `/dotme-review 14` for two weeks), looks for preferences you stated and corrections you repeated, and lists up to 10 for you to choose from. |
+
+Claude Code may list them as `/dotme:dotme-import` and `/dotme:dotme-review`.
+In Codex, type `$dotme-import` or pick them from `/skills`. If Codex does not
+list them, copy them to your own skills folder:
+
+```bash
+mkdir -p ~/.codex/skills && cp -R clients/codex/skills/* ~/.codex/skills/
+```
+
+`/dotme-review` reads transcripts with `recent-messages.mjs`, next to its
+`SKILL.md`. It needs Node.js, prints only your own messages (no agent replies,
+tool output or injected context) and sends nothing anywhere. Run it yourself
+to see what the agent will read:
+
+```bash
+node clients/shared/skills/dotme-review/recent-messages.mjs --days 7
+```
+
+**Running `/dotme-review` on a schedule.** dotme does not schedule it; use
+your client or your system's scheduler. Unattended, the skill proposes at
+most 5 strong candidates, which wait for you on the approval page. For
+example, every Monday at 9 with cron:
+
+```cron
+0 9 * * 1 cd ~ && claude -p "/dotme:dotme-review" >> ~/.config/dotme/review.log 2>&1
+```
+
+`claude -p` cannot ask for tool permissions, so allow the dotme tools and
+`node` for it first (in `/permissions`, or with `--allowedTools`). The log
+lists the approval links.
+
 ## Settings
 
 The hook takes the first setting it finds:
@@ -234,9 +276,8 @@ never appears in a command line, an environment variable or a session.
 
 ## Developing the plugins
 
-The plugins keep their own copy of the hook, because each client copies a
-plugin into its cache on install. Edit `shared/session-start.sh`, then run
+The plugins keep their own copy of the hook and the skills, because each
+client copies a plugin into its cache on install. Edit
+`shared/session-start.sh` or a file under `shared/skills/`, then run
 `npm run sync:plugins`; `npm run check:plugins` fails while a copy differs.
 Validate the Claude Code side with `claude plugin validate .`.
-
-Skills (`/dotme-import`, `/dotme-review`) will ship in these plugins.
