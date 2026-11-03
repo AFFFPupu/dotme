@@ -30,7 +30,7 @@ almost always.
 | Consent page | Approve in this app's own dialog | Pre-ticked for apps on your computer (Claude Code, Codex), off for web apps. An app that cannot show a dialog gets a link anyway. Untick it for an app you do not fully trust. |
 | Consent page | Passphrase | Not asked when you are already signed in to `/approve` in this browser. Otherwise sign in with your passkey, or type the passphrase. |
 | First tool call in the client | Allow dotme's tools | "Yes, and don't ask again" (or Codex's equivalent). Reading is harmless, and a proposal saves nothing until you approve it. |
-| The approval dialog | Accept, Decline, or close | Accept saves, Decline drops, closing it keeps the proposal pending with a link. |
+| The approval dialog | Accept, Decline, or close | Accept saves. Decline or closing it keeps the proposal pending with a link, where you can reject it. |
 
 Commands below use two placeholders:
 
@@ -86,8 +86,8 @@ and Allow on the consent page with the agent name `claude-code`. Start a new
 session; it opens with your preferences.
 
 The dialog shows the change and the evidence, with an optional "only applies
-when" field. **Accept** saves it, **Decline** drops it, and closing the
-dialog keeps it pending with a link to the approval page.
+when" field. **Accept** saves it. **Decline** or closing the dialog keeps it
+pending with a link to the approval page, where you approve or reject it.
 
 **If you also use dotme on claude.ai.** Claude Code syncs your claude.ai
 connectors in. The synced `claude.ai dotme` has the same URL as the plugin's

@@ -83,8 +83,8 @@ function logApprovalPath(agent: string, inlineApproval: boolean, envelope: Recor
   );
 }
 
-// The dialog's own buttons carry the decision: Accept saves, Decline drops, dismissing keeps it
-// pending with a link. The form only asks for an optional scope.
+// Accept saves. Decline or dismissing keeps it pending with a link, where the owner can reject it:
+// clients with no window to show the dialog in decline on their own, and that must not drop a proposal. The form only asks for an optional scope.
 const approvalSchema = z.object({
   when: z.string().max(120).optional().describe("Only applies when (optional), e.g. personal projects"),
 });
@@ -166,13 +166,12 @@ function createServer() {
               approval: inputRequired.elicit({
                 message:
                   `dotme: ${agent} wants to ${change} in ${input.category}.${input.when ? ` Suggested scope: ${input.when}.` : ""} Evidence: ${input.evidence}\n\n` +
-                  "Accept saves it now. Decline drops it. Close the dialog to decide later on the approval page.",
+                  "Accept saves it now. Decline or close this to decide on the approval page instead, where you can also reject it.",
                 requestedSchema: approvalSchema,
               }),
             },
           });
         }
-        if (response.kind === "elicit" && response.action === "decline") return text({ status: "rejected", tellUser: "Nothing was saved." });
         const answer = acceptedContent(responses, "approval", approvalSchema);
         if (answer) {
           const proposal = await propose(store, {
@@ -187,7 +186,7 @@ function createServer() {
           await approve(store, proposal.id, cleanLine(answer.when ?? input.when ?? "", 120) || undefined);
           return text({ status: "approved and saved", proposal: proposal.id });
         }
-        // Dismissed, or an answer that did not fit the form: keep it as a pending proposal with a link, below.
+        // Declined, dismissed, or an answer that did not fit the form: keep it as a pending proposal with a link, below.
       }
 
       const proposal = await propose(store, {
