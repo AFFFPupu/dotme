@@ -160,7 +160,7 @@ Both plugins also ship two skills:
 
 ```bash
 npm install
-printf 'OWNER_PASSPHRASE=local-test-passphrase\nMCP_RESOURCE=http://localhost:8787/mcp\nSTORAGE=kv\n' > .dev.vars
+printf 'OWNER_PASSPHRASE=local-test-passphrase\nSTORAGE=kv\n' > .dev.vars
 npm run dev
 
 npm run typecheck

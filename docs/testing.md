@@ -60,7 +60,7 @@ be green.
 Use this to poke at the pages without touching your real instance:
 
 ```bash
-printf 'OWNER_PASSPHRASE=local-test-passphrase\nMCP_RESOURCE=http://localhost:8787/mcp\nSTORAGE=kv\nEXPORT_TOKEN=local-export-token\n' > .dev.vars
+printf 'OWNER_PASSPHRASE=local-test-passphrase\nSTORAGE=kv\nEXPORT_TOKEN=local-export-token\n' > .dev.vars
 npm run dev
 ```
 

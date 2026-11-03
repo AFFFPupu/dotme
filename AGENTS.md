@@ -35,7 +35,7 @@ earlier plan or review.
 
 ```bash
 npm install
-printf 'OWNER_PASSPHRASE=local-test-passphrase\nMCP_RESOURCE=http://localhost:8787/mcp\nSTORAGE=kv\n' > .dev.vars
+printf 'OWNER_PASSPHRASE=local-test-passphrase\nSTORAGE=kv\n' > .dev.vars
 npm run dev
 node scripts/e2e.mjs
 npx tsc --noEmit
