@@ -287,8 +287,10 @@ Pass: `claude plugin list` shows `dotme` enabled. Optional:
 In a session:
 
 The dialog has an optional "only applies when" field and the client's own
-buttons: **Accept** saves the change, **Decline** drops it, and closing the
-dialog (Escape) keeps it pending with a link.
+buttons: **Accept** saves the change; **Decline** or closing the dialog
+(Escape) keeps it pending with a link, where you approve or reject it. A
+client with no window for the dialog (such as `claude -p`) declines by
+itself, so nothing is lost there.
 
 `evidence` must be at least 10 characters, so the prompts below spell it
 out. With a shorter one, such as "test", the agent stops and asks you.
@@ -302,12 +304,12 @@ out. With a shorter one, such as "test", the agent stops and asks you.
    `<data-repo>` has a new commit touching `coding.md` that names
    `claude-code` and the evidence.
 4. "Propose to dotme, in coding: Throwaway test preference two. Evidence:
-   dotme test run, step 5.6.4." Decline it. Pass: `Nothing was saved.` and
-   no new commit.
+   dotme test run, step 5.6.4." Decline it. Pass: the agent gives you a
+   `<url>/approve/q-...` link and there is no new commit. Open the link,
+   check the diff and evidence, then reject it there.
 5. "Propose to dotme, in coding: Throwaway test preference three. Evidence:
-   dotme test run, step 5.6.5." Close the dialog with Escape. Pass: the agent
-   gives you a `<url>/approve/q-...` link. Open it, check the diff and
-   evidence, then reject it there.
+   dotme test run, step 5.6.5." Close the dialog with Escape. Pass: same as
+   step 4; reject it on the page.
 6. Start a new session. Pass: the pnpm preference from step 3 is in the
    loaded preferences.
 
@@ -385,7 +387,7 @@ table.
 
 3. Start a new session and propose another throwaway preference the same
    way (step 6.4.3). Pass: Codex shows dotme's approval dialog. Decline it.
-   Pass: `Nothing was saved.`
+   Pass: you get a link; reject it on the page.
 
 If Codex still gives a link, run `npm run wrangler -- tail` in your checkout
 while proposing. Each proposal logs one line such as

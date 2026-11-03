@@ -24,8 +24,8 @@ to Cloudflare Workers; the design and v1 plan are in
   with the passphrase once per device, then set up a passkey right there to
   use Face ID or Touch ID from then on.
 - Approval in the client: connections you trust (Claude Code) can show the
-  proposal in their own dialog instead of a link. Accept saves, Decline
-  drops, closing it falls back to the link.
+  proposal in their own dialog instead of a link. Accept saves; Decline or
+  closing it falls back to the link.
 - `/export?categories=collab,coding`: preferences as plain Markdown, for the
   SessionStart hook that copies them into each new session (default
   `collab,coding`). Needs `Authorization: Bearer <EXPORT_TOKEN>`.
