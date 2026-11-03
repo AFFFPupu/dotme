@@ -162,6 +162,38 @@ To see what Codex sends, run `npm run wrangler -- tail` while it proposes;
 each proposal logs the protocol version and client capabilities it arrived
 with.
 
+## 4. Web and cloud clients
+
+Clients that run in the cloud need no plugin. They connect to
+`https://<worker>/mcp` with OAuth: you sign in on dotme's consent page, and
+they approve changes on a link (they cannot show dotme's dialog). There is no
+session hook, so the agent reads preferences when it calls `get_preferences`.
+
+### Grok
+
+- **grok.com**: open [grok.com/connectors](https://grok.com/connectors),
+  choose **New Connector**, then **Custom**. Name it `dotme`, set the Server
+  URL to `https://<worker>/mcp` and add it. Leave any OAuth client fields
+  empty: Grok registers itself. Needs a Grok plan with connectors.
+- **Grok Bot**: there is no settings form. Ask it in chat: "Add a custom MCP
+  server named dotme at https://<worker>/mcp using streamable HTTP, then
+  start its OAuth sign-in." Grok Bot signs in through Cursor's OAuth client,
+  whose callback is `cursor://anysphere.cursor-mcp/oauth/callback`; the
+  consent page shows it as `anysphere.cursor-mcp`.
+
+On the consent page name the agent `grok` or `grok-bot`.
+
+### Compatibility
+
+| Client | Connect | Read | Approve | Notes |
+|---|---|---|---|---|
+| Claude Code | tested | tested | dialog or link | Plugin, section 2. |
+| Codex | tested | tested | link | Plugin, section 3. |
+| claude.ai | tested | tested | link | Settings > Connectors > Add custom connector. In Claude Code, a claude.ai connector named dotme can shadow the plugin's MCP server. |
+| grok.com | untested | untested | link | |
+| Grok Bot | untested | untested | link | Needs a dotme version that accepts private-use redirect URIs (`cursor://`); older versions reject the sign-in with "Invalid redirect URI". |
+| ChatGPT, Cursor | untested | untested | link | Any remote MCP client with OAuth should work. |
+
 ## Settings
 
 The hook takes the first setting it finds:
