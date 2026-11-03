@@ -9,7 +9,7 @@ last copy it fetched.
 
 | | Claude Code | Codex |
 |---|---|---|
-| SessionStart hook | in the plugin | in the plugin |
+| SessionStart hook | in the plugin | a manual `~/.codex/hooks.json` entry (Codex 0.164 and later removed plugin hooks) |
 | MCP connection | in the plugin | one `codex mcp add` command |
 | Approval dialog in the client | when you tick it on the consent page | also needs `mcp_2026_07_28`, see below |
 
@@ -65,10 +65,21 @@ claude plugin install dotme@dotme --config server_url=https://<worker> --config 
 Inside a session the same is `/plugin install dotme --marketplace <repo>`,
 which asks for the server URL.
 
-Then connect the MCP server once: run `/mcp`, pick `dotme`, and sign in on
-the consent page. Name the agent `claude-code` and tick "Let this app ask me
-to approve changes in its own dialog". Start a new session; it opens with your
-preferences.
+Then connect the MCP server once: run `/mcp`, pick `plugin:dotme:dotme`,
+and sign in on the consent page. Name the agent `claude-code` and tick "Let
+this app ask me to approve changes in its own dialog". Start a new session;
+it opens with your preferences.
+
+The dialog shows the change and the evidence, with an optional "only applies
+when" field. **Accept** saves it, **Decline** drops it, and closing the
+dialog keeps it pending with a link to the approval page.
+
+**If you also use dotme on claude.ai.** Claude Code syncs your claude.ai
+connectors in. The synced `claude.ai dotme` has the same URL as the plugin's
+server and wins, so the session acts as your `claude-ai` agent and gets links
+instead of the dialog (`whoami` shows it). Run `/mcp`, pick
+`claude.ai dotme` and choose Disable. Claude Code remembers this per
+directory.
 
 To change which categories the hook loads, run
 `/plugin configure dotme@dotme`, or reinstall with
@@ -86,8 +97,30 @@ and remove a `dotme` MCP server you added by hand (`claude mcp remove dotme
 codex plugin marketplace add <repo>
 ```
 
-Install and enable `dotme` from that marketplace in `/plugins`. Codex asks
-you to review and trust the plugin's hook before it runs it.
+Install and enable `dotme` from that marketplace in `/plugins`.
+
+**Add the hook by hand.** Codex 0.164 and later list `plugin_hooks` as
+removed, so the hook inside the plugin does not run. Copy it out:
+
+```bash
+cp clients/shared/session-start.sh ~/.config/dotme/session-start.sh
+```
+
+and add it to `~/.codex/hooks.json` (merge it in if the file exists):
+
+```json
+{
+  "hooks": {
+    "SessionStart": [
+      { "hooks": [{ "type": "command", "command": "sh ~/.config/dotme/session-start.sh" }] }
+    ]
+  }
+}
+```
+
+Codex asks you to review and trust the hook in the next session. The plugin
+keeps its own copy of the hook for Codex builds that still run plugin hooks;
+use one or the other, not both, or preferences load twice.
 
 Connect the MCP server; the URL is yours, so it is not in the plugin:
 
@@ -108,26 +141,10 @@ mcp_2026_07_28 = true
 ```
 
 Without it, the agent gives you a link to the approval page instead, which
-works the same.
-
-**If the plugin's hook does not run** in your Codex build, add the hook
-yourself:
-
-```bash
-cp clients/shared/session-start.sh ~/.config/dotme/session-start.sh
-```
-
-and in `~/.codex/hooks.json`:
-
-```json
-{
-  "hooks": {
-    "SessionStart": [
-      { "hooks": [{ "type": "command", "command": "sh ~/.config/dotme/session-start.sh" }] }
-    ]
-  }
-}
-```
+works the same. In testing, Codex 0.166 still gave a link with the flag on.
+To see what Codex sends, run `npm run wrangler -- tail` while it proposes;
+each proposal logs the protocol version and client capabilities it arrived
+with.
 
 ## Settings
 

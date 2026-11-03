@@ -5,7 +5,7 @@
 
 import { OAuthProvider, AuthorizationError, CimdFetchError } from "@cloudflare/workers-oauth-provider";
 import type { OAuthHelpers } from "@cloudflare/workers-oauth-provider";
-import { McpServer, acceptedContent, inputRequired } from "@modelcontextprotocol/server";
+import { CLIENT_CAPABILITIES_META_KEY, McpServer, PROTOCOL_VERSION_META_KEY, acceptedContent, inputRequired, inputResponse } from "@modelcontextprotocol/server";
 import { createMcpHandler, getMcpAuthContext } from "agents/mcp/server";
 import { env as workerEnv } from "cloudflare:workers";
 import { z } from "zod";
@@ -48,12 +48,30 @@ function caller(): { agent: string; categories: readonly Category[]; inlineAppro
 // elicitation form. 2025-era requests carry no capabilities, and this stateless server cannot push
 // a dialog to them, so they get the approval link instead.
 function clientCanElicit(envelope: Record<string, unknown> | undefined): boolean {
-  const capabilities = envelope?.["io.modelcontextprotocol/clientCapabilities"] as { elicitation?: unknown } | undefined;
+  const capabilities = envelope?.[CLIENT_CAPABILITIES_META_KEY] as { elicitation?: unknown } | undefined;
   return capabilities?.elicitation !== undefined;
 }
 
-const decisionSchema = z.object({
-  decision: z.enum(["approve", "reject"]).describe("Approve saves it now; reject drops it."),
+// One log line per proposal, so `wrangler tail` shows why a client got a link instead of a dialog.
+// It names the protocol version and capability keys the client sent, never the proposal itself.
+function logApprovalPath(agent: string, inlineApproval: boolean, envelope: Record<string, unknown> | undefined) {
+  const capabilities = envelope?.[CLIENT_CAPABILITIES_META_KEY];
+  console.log(
+    JSON.stringify({
+      proposal: {
+        agent,
+        inlineApproval,
+        protocolVersion: envelope?.[PROTOCOL_VERSION_META_KEY] ?? null,
+        clientCapabilities: capabilities && typeof capabilities === "object" ? Object.keys(capabilities) : null,
+        dialog: inlineApproval && clientCanElicit(envelope),
+      },
+    })
+  );
+}
+
+// The dialog's own buttons carry the decision: Accept saves, Decline drops, dismissing keeps it
+// pending with a link. The form only asks for an optional scope.
+const approvalSchema = z.object({
   when: z.string().max(120).optional().describe("Only applies when (optional), e.g. personal projects"),
 });
 
@@ -104,7 +122,7 @@ function createServer() {
         text: z.string().max(300).optional().describe("The preference in one plain sentence. Required for add and change."),
         when: z.string().max(120).optional().describe("Situations it applies to, e.g. 'personal projects'. Omit for always."),
         replaces: z.string().optional().describe("Id of the preference to change or remove."),
-        evidence: z.string().min(10).max(500).describe("What the user said or did that supports this, and when. A summary, not chat text."),
+        evidence: z.string().min(10).max(500).describe("What the user said or did that supports this, and when, in at least 10 characters. A summary, not chat text."),
       },
     },
     async (input, context) => {
@@ -113,24 +131,29 @@ function createServer() {
 
       // Approve in the client's own dialog when this connection allows it and the client can show one.
       // The client, not the model, returns the answer; the arguments are re-sent unchanged on retry.
-      if (inlineApproval && clientCanElicit(context.mcpReq.envelope as Record<string, unknown> | undefined)) {
-        const responses = context.mcpReq.inputResponses as Record<string, unknown> | undefined;
-        const answer = acceptedContent(responses, "decision", decisionSchema);
-        if (!answer && responses?.decision === undefined) {
+      const envelope = context.mcpReq.envelope as Record<string, unknown> | undefined;
+      const responses = context.mcpReq.inputResponses as Record<string, unknown> | undefined;
+      const response = inputResponse(responses, "approval");
+      if (response.kind === "missing") logApprovalPath(agent, inlineApproval, envelope);
+      if (inlineApproval && clientCanElicit(envelope)) {
+        if (response.kind === "missing") {
           const current = input.replaces ? (await getPreferences(store, input.category)).find((p) => p.id === input.replaces) : undefined;
           const change =
             input.op === "add" ? `add: "${input.text}"` : input.op === "remove" ? `remove: "${current?.text ?? input.replaces}"` : `change "${current?.text ?? input.replaces}" to "${input.text}"`;
           return inputRequired({
             inputRequests: {
-              decision: inputRequired.elicit({
-                message: `dotme: ${agent} wants to ${change} in ${input.category}.${input.when ? ` Suggested scope: ${input.when}.` : ""} Evidence: ${input.evidence}`,
-                requestedSchema: decisionSchema,
+              approval: inputRequired.elicit({
+                message:
+                  `dotme: ${agent} wants to ${change} in ${input.category}.${input.when ? ` Suggested scope: ${input.when}.` : ""} Evidence: ${input.evidence}\n\n` +
+                  "Accept saves it now. Decline drops it. Close the dialog to decide later on the approval page.",
+                requestedSchema: approvalSchema,
               }),
             },
           });
         }
-        if (answer?.decision === "reject") return text({ status: "rejected", tellUser: "Nothing was saved." });
-        if (answer?.decision === "approve") {
+        if (response.kind === "elicit" && response.action === "decline") return text({ status: "rejected", tellUser: "Nothing was saved." });
+        const answer = acceptedContent(responses, "approval", approvalSchema);
+        if (answer) {
           const proposal = await propose(store, {
             category: input.category,
             op: input.op,
@@ -143,7 +166,7 @@ function createServer() {
           await approve(store, proposal.id, cleanLine(answer.when ?? input.when ?? "", 120) || undefined);
           return text({ status: "approved and saved", proposal: proposal.id });
         }
-        // Declined or cancelled: keep it as a pending proposal with a link, below.
+        // Dismissed, or an answer that did not fit the form: keep it as a pending proposal with a link, below.
       }
 
       const proposal = await propose(store, {

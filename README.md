@@ -18,7 +18,12 @@ to Cloudflare Workers; the design and v1 plan are in
 - `/authorize`: consent page. You name the agent, tick the categories it may
   see and enter the owner passphrase. The name is stamped on its proposals.
 - `/approve`: owner page. Shows each proposal's diff, evidence and conflicts;
-  approve (optionally scoped with "only applies when"), or reject.
+  approve (optionally scoped with "only applies when"), or reject. Sign in
+  with the passphrase once per device, then set up a passkey right there to
+  use Face ID or Touch ID from then on.
+- Approval in the client: connections you trust (Claude Code) can show the
+  proposal in their own dialog instead of a link. Accept saves, Decline
+  drops, closing it falls back to the link.
 - `/export?categories=collab,coding`: preferences as plain Markdown, for the
   SessionStart hook that copies them into each new session (default
   `collab,coding`). Needs `Authorization: Bearer <EXPORT_TOKEN>`.
@@ -65,4 +70,5 @@ Connect a client to `<url>/mcp`.
 ## Claude Code and Codex
 
 Plugins for both clients load your preferences at the start of every session
-and connect the MCP server. See [clients/README.md](clients/README.md).
+and connect the MCP server. Current Codex builds no longer run plugin hooks,
+so Codex needs one manual hook entry. See [clients/README.md](clients/README.md).

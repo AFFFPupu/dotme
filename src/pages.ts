@@ -93,14 +93,16 @@ export async function handleApprovalPages(request: Request, passphrase: string, 
   const form = request.method === "POST" ? await request.formData() : null;
   if (form?.get("action") === "signin") {
     if (!(await samePassphrase(String(form.get("passphrase") ?? ""), passphrase))) return signInPage(await hasPasskeys(kv), "Wrong passphrase.");
-    const headers = new Headers({ Location: url.pathname });
+    // Offer a passkey on the page the owner came for, so setting one up never costs a proposal.
+    const headers = new Headers({ Location: `${url.pathname}?passkey=offer` });
     headers.append("Set-Cookie", await sessionCookie(passphrase));
     return new Response(null, { status: 303, headers });
   }
   if (!(await hasSession(request, passphrase))) return signInPage(await hasPasskeys(kv));
 
   const id = match[1];
-  if (!id) return pendingListPage(store, await hasPasskeys(kv));
+  const offer = url.searchParams.get("passkey") === "offer" ? passkeyOffer(url.pathname) : "";
+  if (!id) return pendingListPage(store, await hasPasskeys(kv), offer);
 
   if (form) {
     const decision = form.get("decision");
@@ -110,7 +112,7 @@ export async function handleApprovalPages(request: Request, passphrase: string, 
   }
 
   const found = await getProposal(store, id);
-  if (!found) return html(`<h1>Already handled</h1><p>This proposal was approved, rejected or never existed.</p><p><a href="/approve">All pending</a></p>`, new Headers(), 404);
+  if (!found) return html(`${offer}<h1>Already handled</h1><p>This proposal was approved, rejected or never existed.</p><p><a href="/approve">All pending</a></p>`, new Headers(), 404);
   const { proposal } = found;
   const current = (await getPreferences(store, proposal.category)).find((p) => p.id === proposal.replaces);
   const others = conflictsWith(proposal, await listPending(store, CATEGORIES));
@@ -122,7 +124,7 @@ export async function handleApprovalPages(request: Request, passphrase: string, 
         ? `<del>- ${escape(current?.text ?? proposal.replaces!)}</del>`
         : `<del>- ${escape(current?.text ?? "")}</del><br><ins>+ ${escape(proposal.text!)}</ins>`;
 
-  return html(`<title>Approve ${escape(proposal.id)}</title>
+  return html(`<title>Approve ${escape(proposal.id)}</title>${offer}
 <h1>${escape(proposal.by)} wants to ${escape(proposal.op)} a <code>${escape(proposal.category)}</code> preference</h1>
 <div class="box">${diff}</div>
 <p><strong>Evidence:</strong> ${escape(proposal.evidence)}</p>
@@ -133,9 +135,15 @@ ${proposal.op === "remove" ? "" : `<p><label>Only applies when (optional, e.g. "
 </form><p><a href="/approve">All pending</a></p>`);
 }
 
-async function pendingListPage(store: Store, passkeys: boolean): Promise<Response> {
+// Shown once after a passphrase sign-in. Registering reloads this same page without the offer.
+function passkeyOffer(path: string): string {
+  return `<div class="box"><p>You signed in with the passphrase. Set up a passkey on this device to sign in with Face ID or Touch ID next time.</p>
+<p><button onclick="passkey('register')">Set up a passkey</button> <a href="${escape(path)}">Not now</a></p></div>${PASSKEY_SCRIPT}`;
+}
+
+async function pendingListPage(store: Store, passkeys: boolean, offer: string): Promise<Response> {
   const pending = await listPending(store, CATEGORIES);
   const rows = pending.map((p) => `<li><a href="/approve/${escape(p.id)}">${escape(p.by)} · ${escape(p.category)} · ${escape(p.op)}: ${escape(p.text ?? p.replaces ?? "")}</a></li>`);
-  return html(`<title>Pending</title><h1>Pending proposals</h1>${rows.length ? `<ul>${rows.join("")}</ul>` : "<p>Nothing pending.</p>"}
-<p><button onclick="passkey('register')">${passkeys ? "Add a passkey on this device" : "Set up a passkey (Face ID or Touch ID)"}</button></p>${PASSKEY_SCRIPT}`);
+  return html(`<title>Pending</title>${offer}<h1>Pending proposals</h1>${rows.length ? `<ul>${rows.join("")}</ul>` : "<p>Nothing pending.</p>"}
+<p><button onclick="passkey('register')">${passkeys ? "Add a passkey on this device" : "Set up a passkey (Face ID or Touch ID)"}</button></p>${offer ? "" : PASSKEY_SCRIPT}`);
 }
