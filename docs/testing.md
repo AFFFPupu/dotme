@@ -193,6 +193,11 @@ path:
 3. Set up the passkey with Face ID. Pass: you stay on the same proposal and
    it is still pending. Reject it.
 4. Open `<url>/approve` in a private tab. Pass: the passkey signs you in.
+5. Have an agent propose two throwaway preferences and open `<url>/approve`
+   on the phone. Pass: each proposal is a card with its diff and evidence,
+   both are ticked, and **Approve ticked** and **Reject ticked** stay at the
+   bottom of the screen while you scroll. Press **Reject ticked**. Pass:
+   `Rejected 2 proposals.` and neither is pending.
 
 The owner session lasts 30 days per browser.
 

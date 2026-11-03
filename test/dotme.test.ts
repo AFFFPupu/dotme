@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { approve, conflictsWith, getPreferences, getProposal, listCategories, listPending, propose, reject } from "../src/dotme";
+import { approve, conflictsWith, ProposalError, getPreferences, getProposal, listCategories, listPending, propose, reject } from "../src/dotme";
 import { isCategoryName } from "../src/prefs";
 import type { Proposal } from "../src/prefs";
 import type { Store } from "../src/store";
@@ -97,7 +97,18 @@ describe("approve", () => {
   });
 
   it("fails for an unknown proposal", async () => {
+    await expect(approve(store, "q-00000000", undefined)).rejects.toThrow(ProposalError);
     await expect(approve(store, "q-00000000", undefined)).rejects.toThrow("Proposal not found");
+  });
+
+  it("refuses a change whose preference another approval removed, and keeps it open", async () => {
+    await approve(store, (await propose(store, input())).id, undefined);
+    const [existing] = await getPreferences(store, "coding");
+    const change = await propose(store, input({ op: "change", replaces: existing.id, text: "Revised" }));
+    await approve(store, (await propose(store, input({ op: "remove", replaces: existing.id, text: undefined }))).id, undefined);
+    await expect(approve(store, change.id, undefined)).rejects.toThrow(`(${existing.id}) is no longer in coding`);
+    expect(await getPreferences(store, "coding")).toEqual([]);
+    expect(await getProposal(store, change.id)).not.toBeNull();
   });
 });
 

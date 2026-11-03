@@ -54,10 +54,20 @@ export function conflictsWith(proposal: Proposal, pending: Proposal[]): Proposal
   return pending.filter((p) => p.id !== proposal.id && p.category === proposal.category && p.replaces && p.replaces === proposal.replaces);
 }
 
+// A decision the owner cannot make as asked (already handled, target gone, file busy). Pages show
+// its message as a friendly page instead of a server error.
+export class ProposalError extends Error {}
+
 export async function approve(store: Store, id: string, when: string | undefined): Promise<void> {
   const found = await getProposal(store, id);
-  if (!found) throw new Error("Proposal not found");
+  if (!found) throw new ProposalError("Proposal not found: it was already approved or rejected.");
+  await approveFound(store, found, when);
+}
+
+// Approves a proposal already read with getProposal, so a batch reads each proposal once.
+export async function approveFound(store: Store, found: { proposal: Proposal; sha: string }, when: string | undefined): Promise<void> {
   const { proposal, sha } = found;
+  const id = proposal.id;
   const path = prefPath(proposal.category);
   const today = new Date().toISOString().slice(0, 10);
   const message = [
@@ -71,16 +81,25 @@ export async function approve(store: Store, id: string, when: string | undefined
   // Conditional write: if another approval changed the file in between, re-read and re-apply.
   for (let attempt = 0; attempt < 3; attempt++) {
     const file = await store.read(path);
-    const next = applyProposal(file ? parsePreferences(file.content) : [], proposal, when, today);
+    const current = file ? parsePreferences(file.content) : [];
+    // Another approval (or a hand edit) removed the preference this one changes or removes.
+    if (proposal.op !== "add" && !current.some((p) => p.id === proposal.replaces)) {
+      throw new ProposalError(`The preference this proposal ${proposal.op === "remove" ? "removes" : "changes"} (${proposal.replaces}) is no longer in ${proposal.category}. Reject it.`);
+    }
+    const next = applyProposal(current, proposal, when, today);
     if (await store.write(path, serializePreferences(proposal.category, next), file?.sha ?? null, message)) {
       await store.remove(pendingPath(id), sha, `Close proposal ${id}: approved`);
       return;
     }
   }
-  throw new Error("The file kept changing; try again");
+  throw new ProposalError(`${proposal.category} kept changing while saving; try again.`);
 }
 
 export async function reject(store: Store, id: string): Promise<void> {
   const found = await getProposal(store, id);
-  if (found) await store.remove(pendingPath(id), found.sha, `Close proposal ${id}: rejected`);
+  if (found) await rejectFound(store, found);
+}
+
+export async function rejectFound(store: Store, found: { proposal: Proposal; sha: string }): Promise<void> {
+  await store.remove(pendingPath(found.proposal.id), found.sha, `Close proposal ${found.proposal.id}: rejected`);
 }
