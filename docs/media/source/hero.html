@@ -1,0 +1,137 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@500;700&family=JetBrains+Mono:wght@400;700&display=block" rel="stylesheet">
+<script src="dot.js"></script>
+<style>
+*{box-sizing:border-box;margin:0}
+html,body{width:960px;height:540px;overflow:hidden;background:#FFF4E2;color:#2A2238}
+.px{font-family:"Pixelify Sans",monospace}
+#cap{position:absolute;left:0;right:0;top:22px;height:44px;display:flex;justify-content:center;gap:14px}
+.step{font:700 21px "Pixelify Sans";padding:6px 14px;border:3px solid #2A2238;background:#FFFDF8;opacity:.35;transition:none;display:flex;gap:10px;align-items:center}
+.step b{display:inline-flex;width:26px;height:26px;align-items:center;justify-content:center;background:#2A2238;color:#FFF4E2;font-size:17px}
+.step.on{opacity:1;background:#FFB547;box-shadow:4px 4px 0 #2A2238}
+.win{position:absolute;top:92px;width:420px;height:330px;background:#2A2238;border:3px solid #2A2238;box-shadow:6px 6px 0 #120e19;color:#FFF4E2;font:14px/1.6 "JetBrains Mono",monospace;overflow:hidden}
+#L{left:48px}#R{left:492px}
+.bar{height:32px;background:#FFF4E2;border-bottom:3px solid #2A2238;color:#2A2238;display:flex;align-items:center;gap:8px;padding:0 10px;font:700 16px "Pixelify Sans"}
+.bar i{width:10px;height:10px;background:#2A2238;display:inline-block}
+.bar i:nth-child(1){background:#FF7A8A}.bar i:nth-child(2){background:#FFB547}.bar i:nth-child(3){background:#9bd08f}
+.bar span{margin-left:6px}
+.body{padding:12px 14px}
+.line{white-space:pre-wrap;min-height:22px}
+.dim{color:#b9aec8}.acc{color:#FFB547}.ok{color:#9bd08f}.you{color:#FFF4E2;font-weight:700}
+.cursor{display:inline-block;width:8px;height:16px;background:#FFB547;vertical-align:-3px}
+.off{opacity:.5}
+#dlg{position:absolute;left:66px;top:178px;width:384px;background:#FFFDF8;color:#2A2238;border:3px solid #2A2238;box-shadow:6px 6px 0 #2A2238;padding:14px 16px;font:15px/1.45 system-ui,sans-serif;display:none}
+#dlg h3{font:700 17px "Pixelify Sans";margin-bottom:8px;display:flex;align-items:center;gap:8px}
+#dlg ins{display:block;text-decoration:none;background:#dcf3d2;padding:4px 8px;margin:6px 0;font-weight:600}
+#dlg .ev{color:#6b6178;font-size:13px}
+#dlg .btns{display:flex;gap:10px;margin-top:12px}
+.btn{font:700 15px system-ui;padding:7px 18px;border:3px solid #2A2238;background:#FFB547;box-shadow:3px 3px 0 #2A2238}
+.btn.sec{background:transparent}
+.btn.press{transform:translate(2px,2px);box-shadow:1px 1px 0 #2A2238}
+#saved{position:absolute;left:66px;top:170px;width:384px;height:170px;display:none;align-items:center;justify-content:center;gap:16px;background:#FFFDF8;border:3px solid #2A2238;box-shadow:6px 6px 0 #2A2238;color:#2A2238}
+#saved .t{font:700 26px "Pixelify Sans"}
+#saved .s{font:15px system-ui;color:#6b6178}
+#hand{position:absolute;width:18px;height:18px;border-radius:50%;background:rgba(255,122,138,.45);border:3px solid #2A2238;display:none}
+#dot{position:absolute;image-rendering:pixelated}
+#bubble{position:absolute;font:700 16px "Pixelify Sans";background:#FFFDF8;border:3px solid #2A2238;padding:4px 10px;white-space:nowrap;display:none}
+.conf{position:absolute;width:8px;height:8px}
+#foot{position:absolute;bottom:22px;left:0;right:0;text-align:center;font:700 22px "Pixelify Sans";color:#2A2238}
+#end{position:absolute;inset:0;background:#FFF4E2;display:none;flex-direction:column;align-items:center;justify-content:center;gap:18px}
+#end .w{font:700 54px "Pixelify Sans";letter-spacing:2px}
+#end .s{font:600 22px system-ui;color:#6b6178}
+</style></head><body>
+<div id="cap">
+  <div class="step" id="s1"><b>1</b>Tell one agent</div>
+  <div class="step" id="s2"><b>2</b>Approve once</div>
+  <div class="step" id="s3"><b>3</b>Every agent knows</div>
+</div>
+<div class="win" id="L"><div class="bar"><i></i><i></i><i></i><span>Claude Code</span></div><div class="body" id="Lb"></div></div>
+<div class="win" id="R"><div class="bar"><i></i><i></i><i></i><span>Codex</span></div><div class="body" id="Rb"></div></div>
+<div id="dlg"><h3>dotme · approve this change?</h3>
+  <div><b>claude-code</b> wants to add a <b>coding</b> preference</div>
+  <ins>+ Use pnpm instead of npm</ins>
+  <div class="ev">Evidence: you said "use pnpm, not npm. always."</div>
+  <div class="btns"><span class="btn" id="acc">Accept</span><span class="btn sec">Decline</span></div></div>
+<div id="saved"><span id="sdot"></span><div><div class="t">Saved!</div><div class="s">1 commit to your<br>private dotme repo</div></div></div>
+<div id="hand"></div>
+<div id="conf"></div>
+<div id="dot"></div>
+<div id="bubble"></div>
+<div id="foot"></div>
+<div id="end"><div id="edot"></div><svg width="300" height="68" viewBox="-1 4.725 39.125 8.875"><path fill="#2A2238" d="WORDMARK_PATH ="/></svg><div class="s">Dot follows you to every agent.</div></div>
+<script>
+const $ = (id) => document.getElementById(id);
+const clamp = (x) => Math.max(0, Math.min(1, x));
+const ease = (x) => 1 - Math.pow(1 - clamp(x), 3);
+const typed = (s, t0, t, cps = 22) => s.slice(0, Math.max(0, Math.floor((t - t0) * cps)));
+const cur = (on) => on ? '<span class="cursor"></span>' : "";
+$("sdot").innerHTML = dotSVG(96, "happy");
+$("edot").innerHTML = dotSVG(128, "happy");
+const confetti = Array.from({ length: 26 }, (_, i) => {
+  const a = (i / 26) * Math.PI * 2 + (i % 3) * .3, sp = 140 + (i * 37 % 90);
+  const el = document.createElement("div"); el.className = "conf";
+  el.style.background = ["#FFB547", "#FF7A8A", "#2A2238", "#9bd08f", "#E08A1E"][i % 5];
+  $("conf").appendChild(el); return { el, a, sp };
+});
+const T = 15.5;
+function render(t) {
+  // Steps
+  const step = t < 4.2 ? 1 : t < 7.4 ? 2 : 3;
+  for (const i of [1, 2, 3]) $("s" + i).classList.toggle("on", i === step && t < 13.6);
+  // Left terminal
+  const q = "use pnpm, not npm. always.";
+  let L = `<div class="line dim">~/side-project</div>`;
+  L += `<div class="line"><span class="acc">&gt;</span> <span class="you">${typed(q, .6, t)}</span>${cur(t < 2.2 && Math.floor(t * 3) % 2 === 0)}</div>`;
+  if (t > 2.5) L += `<div class="line"><span class="acc">●</span> ${typed("Got it. I'll save that to dotme, so every agent knows.", 2.5, t, 50)}</div>`;
+  if (t > 3.7) L += `<div class="line dim">  dotme · propose_change(coding)</div>`;
+  if (t > 6.6) L += `<div class="line ok">  ✓ approved and saved</div>`;
+  $("Lb").innerHTML = L;
+  $("L").classList.toggle("off", t > 7.6 && t < 13.6);
+  // Dialog
+  $("dlg").style.display = t > 4.2 && t < 6.2 ? "block" : "none";
+  $("acc").classList.toggle("press", t > 5.55 && t < 6.2);
+  const hand = t > 4.9 && t < 6.2;
+  $("hand").style.display = hand ? "block" : "none";
+  if (hand) { const k = ease((t - 4.9) / .55); $("hand").style.left = (310 - k * 176) + "px"; $("hand").style.top = (420 - k * 84) + "px"; }
+  // Saved card + confetti
+  $("saved").style.display = t > 6.2 && t < 7.6 ? "flex" : "none";
+  for (const c of confetti) {
+    const k = (t - 6.2) / 1.2, on = k > 0 && k < 1;
+    c.el.style.display = on ? "block" : "none";
+    if (on) { c.el.style.left = (258 + Math.cos(c.a) * c.sp * ease(k)) + "px"; c.el.style.top = (255 + Math.sin(c.a) * c.sp * ease(k) + 160 * k * k) + "px"; }
+  }
+  // Right terminal
+  $("R").classList.toggle("off", t < 7.6);
+  let R = `<div class="line dim">~/another-project</div>`;
+  if (t > 8.4) R += `<div class="line dim">new session</div>`;
+  if (t > 8.8) R += `<div class="line acc">dotme · loaded collab, coding</div>`;
+  if (t > 9.3) R += `<div class="line"><span class="acc">&gt;</span> <span class="you">${typed("set up the project", 9.3, t)}</span>${cur(t < 10.4 && Math.floor(t * 3) % 2 === 0)}</div>`;
+  if (t > 10.6) R += `<div class="line"><span class="acc">●</span> ${typed("You prefer pnpm, so:", 10.6, t, 45)}</div>`;
+  if (t > 11.3) R += `<div class="line">  $ ${typed("pnpm install", 11.3, t, 30)}</div>`;
+  if (t > 12.1) R += `<div class="line ok">  ✓ done, no npm in sight</div>`;
+  $("Rb").innerHTML = R;
+  // Dot: sits under the left window, hops to the right one at 7.6s
+  let x = 230, y = 438, mood = "idle", bub = "";
+  if (t > 6.2 && t < 7.6) mood = "happy";
+  if (Math.floor(t * 10) % 37 === 0 && mood === "idle") mood = "blink";
+  if (t >= 7.6) {
+    const hops = [[230, 470], [470, 690]];
+    const k = (t - 7.6) / 1.1;
+    if (k < 1) { const h = hops[k < .5 ? 0 : 1], kk = (k % .5) * 2; x = h[0] + (h[1] - h[0]) * kk; y = 438 - Math.sin(Math.PI * kk) * 70; mood = "happy"; }
+    else { x = 690; y = 438; }
+  }
+  if (t > 12.3) { mood = "happy"; y = 438 - Math.abs(Math.sin((t - 12.3) * 9)) * 10 * Math.max(0, 1 - (t - 12.3)); }
+  if (t > 1.2 && t < 2.6) bub = "I'll remember!";
+  if (t > 8.7 && t < 10.2) bub = "Found you!";
+  $("dot").innerHTML = dotSVG(64, mood);
+  $("dot").style.left = x + "px"; $("dot").style.top = y + "px";
+  $("bubble").style.display = bub ? "block" : "none"; $("bubble").textContent = bub;
+  $("bubble").style.left = (x + 74) + "px"; $("bubble").style.top = (y + 14) + "px";
+  $("foot").textContent = "";
+  // End card
+  $("end").style.display = t > 13.6 ? "flex" : "none";
+}
+window.render = render; window.T = T;
+render(0);
+</script></body></html>

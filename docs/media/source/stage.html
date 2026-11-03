@@ -1,0 +1,25 @@
+<!doctype html><html><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@500;700&display=block" rel="stylesheet">
+<script src="dot.js"></script>
+<style>
+*{box-sizing:border-box;margin:0}
+html,body{width:880px;height:560px;overflow:hidden;background:#FFF4E2;color:#2A2238}
+#phone{position:absolute;left:70px;top:22px;width:300px;height:516px;border:4px solid #2A2238;border-radius:30px;background:#2A2238;padding:12px 8px;box-shadow:8px 8px 0 #2A2238}
+#scr{width:276px;height:484px;border-radius:18px;overflow:hidden;background:#FFF4E2}
+#scr img{width:276px;display:block}
+#side{position:absolute;left:440px;top:60px;width:400px}
+#cap{font:700 36px/1.2 "Pixelify Sans";min-height:90px}
+#sub{font:500 19px/1.45 system-ui,sans-serif;color:#6b6178;margin-top:6px;min-height:60px}
+#dot{margin-top:28px;image-rendering:pixelated}
+#wm{position:absolute;right:40px;bottom:30px}
+</style></head><body>
+<div id="phone"><div id="scr"><img id="img"></div></div>
+<div id="side"><div id="cap"></div><div id="sub"></div><div id="dot"></div></div>
+<svg id="wm" width="150" height="34" viewBox="-1 4.725 39.125 8.875"><path fill="#2A2238" d="WORDMARK_PATH ="/></svg>
+<script>
+window.set = (src, cap, sub, mood, hop) => new Promise((res) => {
+  const img = document.getElementById('img'); img.onload = res; img.src = src;
+  document.getElementById('cap').textContent = cap; document.getElementById('sub').textContent = sub;
+  const d = document.getElementById('dot'); d.innerHTML = dotSVG(112, mood); d.style.transform = 'translateY(' + (-hop) + 'px)';
+});
+</script></body></html>
