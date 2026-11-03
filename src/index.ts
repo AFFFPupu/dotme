@@ -1,7 +1,8 @@
 // dotme, dotfiles for AI agents: an OAuth-protected MCP endpoint over the
 // owner's preference files. Each connected agent is one OAuth grant, named by
 // the owner on the consent page, with the categories it may see. Agents read
-// and propose; only the owner approves, on /approve.
+// and propose; only the owner approves, in the app's own dialog or on /approve.
+// The consent page and /approve share one owner session.
 
 import { OAuthProvider, AuthorizationError, CimdFetchError } from "@cloudflare/workers-oauth-provider";
 import type { OAuthHelpers } from "@cloudflare/workers-oauth-provider";
@@ -9,7 +10,8 @@ import { CLIENT_CAPABILITIES_META_KEY, McpServer, PROTOCOL_VERSION_META_KEY, acc
 import { createMcpHandler, getMcpAuthContext } from "agents/mcp/server";
 import { env as workerEnv } from "cloudflare:workers";
 import { z } from "zod";
-import { escape, handleApprovalPages, hasSession, html, samePassphrase } from "./pages";
+import { escape, handleApprovalPages, hasSession, html, samePassphrase, sessionCookie } from "./pages";
+import { checkPassphrase, lockMessage } from "./ratelimit";
 import { hasPasskeys, PASSKEY_SCRIPT } from "./passkeys";
 import { approve, getPreferences, isCategory, listPending, propose } from "./dotme";
 import { CATEGORIES, cleanLine } from "./prefs";
@@ -29,8 +31,10 @@ const env = workerEnv as unknown as Env;
 const origin = () => new URL(env.MCP_RESOURCE).origin;
 
 const INSTRUCTIONS = `This server holds the user's personal preferences for AI agents, in categories.
-Read them with get_preferences and follow them. Never claim a preference was saved:
-propose_change only creates a proposal, and the user approves it on a page you link to.
+Read them with get_preferences and follow them. Never claim a preference was saved unless
+propose_change says so: it returns "approved and saved" only when the user accepted it in this
+app's own approval dialog. Otherwise it returns "pending approval" with a link; send the user
+that link, where they approve or reject it, and say it is not saved yet.
 Propose a change only after asking the user in conversation, with specific evidence
 (what they said or did, and when). When a new preference seems to contradict an old one,
 ask whether it applies only in some situations and propose it with "when" instead of
@@ -135,7 +139,7 @@ function createServer() {
     "propose_change",
     {
       description:
-        "Propose adding, changing or removing a preference. Ask the user first. Returns a link: send it to the user, who approves or rejects there. Nothing changes until they do.",
+        "Propose adding, changing or removing a preference. Ask the user first. The user may approve it in this app's dialog (status \"approved and saved\"). Otherwise it returns a link (status \"pending approval\"): send it to the user, who approves or rejects there. Nothing changes until they do.",
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
       inputSchema: {
         category,
@@ -301,10 +305,19 @@ ${details.redirectIsLoopback ? "<p><strong>This sends access to an app on your c
           const denied = await oauth.denyConsent(request, handle);
           return new Response(null, { status: 302, headers: denied.headers });
         }
-        // A signed-in owner (passkey or passphrase on /approve) does not type the passphrase again.
-        const owner = (await hasSession(request, env.OWNER_PASSPHRASE)) || (await samePassphrase(String(form.get("passphrase") ?? ""), env.OWNER_PASSPHRASE));
-        if (!owner) {
-          return new Response("Wrong passphrase. Go back and start the connection again.", { status: 403 });
+        // A signed-in owner (passkey or passphrase, here or on /approve) does not type the passphrase again.
+        // Signing in here with the passphrase starts the same owner session, so /approve needs no second sign-in.
+        let signIn: string | undefined;
+        if (!(await hasSession(request, env.OWNER_PASSPHRASE))) {
+          const check = await checkPassphrase(env.OAUTH_KV, request, String(form.get("passphrase") ?? ""), (given) => samePassphrase(given, env.OWNER_PASSPHRASE));
+          if (!check.ok) {
+            const plain = { "Content-Type": "text/plain; charset=utf-8" };
+            if (check.lockedFor > 0) {
+              return new Response(lockMessage(check.lockedFor), { status: 429, headers: { ...plain, "Retry-After": String(check.lockedFor) } });
+            }
+            return new Response("Wrong passphrase. Go back and start the connection again.", { status: 403, headers: plain });
+          }
+          signIn = await sessionCookie(env.OWNER_PASSPHRASE);
         }
         const agent = String(form.get("agent") ?? "");
         if (!/^[a-z0-9-]{2,32}$/.test(agent)) return new Response("Invalid agent name.", { status: 400 });
@@ -319,6 +332,7 @@ ${details.redirectIsLoopback ? "<p><strong>This sends access to an app on your c
           props: { agent, categories, inlineApproval: form.get("inline") === "on", authorizedAt: new Date().toISOString() },
         });
         approved.headers.set("Location", redirectTo);
+        if (signIn) approved.headers.append("Set-Cookie", signIn);
         return new Response(null, { status: 302, headers: approved.headers });
       }
 
