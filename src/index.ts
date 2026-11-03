@@ -11,6 +11,7 @@ import { createMcpHandler, getMcpAuthContext } from "agents/mcp/server";
 import { env as workerEnv } from "cloudflare:workers";
 import { z } from "zod";
 import { escape, handleApprovalPages, hasSession, html, samePassphrase, sessionCookie } from "./pages";
+import { messagePage, say } from "./html";
 import { checkPassphrase, lockMessage } from "./ratelimit";
 import { hasPasskeys, PASSKEY_SCRIPT } from "./passkeys";
 import { approve, getPreferences, listCategories, listPending, propose } from "./dotme";
@@ -289,7 +290,8 @@ const AuthHandler = {
     if (approval) return approval;
 
     const url = new URL(request.url);
-    if (url.pathname !== "/authorize") return new Response("dotme", { status: 200 });
+    if (url.pathname === "/") return homePage();
+    if (url.pathname !== "/authorize") return messagePage("Not found", "<p>There is nothing at this address.</p>", "oops", 404, `<a href="/">dotme home</a>`);
 
     const oauth = env.OAUTH_PROVIDER;
     try {
@@ -302,26 +304,26 @@ const AuthHandler = {
           : "This app registered itself; its name is not verified.";
         const signedIn = await hasSession(request, env.OWNER_PASSPHRASE);
         const boxes = (await listCategories(makeStore(env))).map(
-          (c) => `<label><input type="checkbox" name="category" value="${escape(c)}" checked> <strong>${escape(c)}</strong>${CATEGORY_HINTS[c] ? `: ${CATEGORY_HINTS[c]}` : ""}</label><br>`
+          (c) => `<label class="pick"><input type="checkbox" name="category" value="${escape(c)}" checked><span><strong>${escape(c)}</strong>${CATEGORY_HINTS[c] ? `: ${CATEGORY_HINTS[c]}` : ""}</span></label>`
         ).join("\n");
         // Apps on this computer (Claude Code, Codex) can show their own approval dialog; web apps use the link.
         const inline = details.redirectIsLoopback ? " checked" : "";
         const owner = signedIn
-          ? "<p>Signed in as the owner.</p>"
+          ? `<p class="meta">Signed in as the owner.</p>`
           : `${(await hasPasskeys(env.OAUTH_KV)) ? `<p><button type="button" onclick="passkey('login')">Sign in with passkey</button> or type the passphrase:</p>${PASSKEY_SCRIPT}` : ""}
   <p><label>Passphrase <input name="passphrase" type="password" required></label></p>`;
         return html(
           `<title>Connect ${escape(details.clientName)}</title>
 <h1>Connect ${escape(details.clientName)} to dotme?</h1>
-<p>${source} Access will be sent to <strong>${escape(details.redirectHost)}</strong>.</p>
-${details.redirectIsLoopback ? "<p><strong>This sends access to an app on your computer.</strong> Continue only if you just started connecting from it.</p>" : ""}
+${say(`<p>${source} Access will be sent to <strong>${escape(details.redirectHost)}</strong>.</p>`)}
+${details.redirectIsLoopback ? `<div class="box notice"><p><strong>This sends access to an app on your computer.</strong> Continue only if you just started connecting from it.</p></div>` : ""}
 <form method="post">
   <input type="hidden" name="handle" value="${escape(consent.handle)}">
   <p><label>Agent name, shown on its proposals<br><input name="agent" required pattern="[a-z0-9-]{2,32}" value="${escape(suggestedAgentName(details.clientName))}" placeholder="claude-code"></label></p>
-  <p>It may read and propose changes to:<br>${boxes}</p>
-  <p><label><input type="checkbox" name="inline"${inline}> Approve changes in this app's own dialog. Leave it off for apps you do not fully trust; you then approve on a link. Apps that cannot show a dialog use the link anyway.</label></p>
+  <div class="box"><p>It may read and propose changes to:</p>${boxes}</div>
+  <p><label class="pick"><input type="checkbox" name="inline"${inline}><span>Approve changes in this app's own dialog. Leave it off for apps you do not fully trust; you then approve on a link. Apps that cannot show a dialog use the link anyway.</span></label></p>
   ${owner}
-  <p><button name="decision" value="approve">Allow</button> <button name="decision" value="deny" formnovalidate class="secondary">Deny</button></p>
+  <p class="actions"><button name="decision" value="approve">Allow</button><button name="decision" value="deny" formnovalidate class="secondary">Deny</button></p>
 </form>`,
           consent.headers
         );
@@ -340,16 +342,17 @@ ${details.redirectIsLoopback ? "<p><strong>This sends access to an app on your c
         if (!(await hasSession(request, env.OWNER_PASSPHRASE))) {
           const check = await checkPassphrase(env.OAUTH_KV, request, String(form.get("passphrase") ?? ""), (given) => samePassphrase(given, env.OWNER_PASSPHRASE));
           if (!check.ok) {
-            const plain = { "Content-Type": "text/plain; charset=utf-8" };
             if (check.lockedFor > 0) {
-              return new Response(lockMessage(check.lockedFor), { status: 429, headers: { ...plain, "Retry-After": String(check.lockedFor) } });
+              const locked = messagePage("Too many tries", `<p>${escape(lockMessage(check.lockedFor))}</p>`, "oops", 429);
+              locked.headers.set("Retry-After", String(check.lockedFor));
+              return locked;
             }
-            return new Response("Wrong passphrase. Go back and start the connection again.", { status: 403, headers: plain });
+            return messagePage("Wrong passphrase", "<p>Nothing was connected. Go back and start the connection again from the app.</p>", "oops", 403);
           }
           signIn = await sessionCookie(env.OWNER_PASSPHRASE);
         }
         const agent = String(form.get("agent") ?? "");
-        if (!/^[a-z0-9-]{2,32}$/.test(agent)) return new Response("Invalid agent name.", { status: 400 });
+        if (!/^[a-z0-9-]{2,32}$/.test(agent)) return messagePage("Invalid agent name", "<p>Use 2 to 32 lowercase letters, digits or dashes. Go back and try again.</p>", "oops", 400);
         const known = await listCategories(makeStore(env));
         const categories = form.getAll("category").map(String).filter((c) => known.includes(c));
 
@@ -366,17 +369,24 @@ ${details.redirectIsLoopback ? "<p><strong>This sends access to an app on your c
         return new Response(null, { status: 302, headers: approved.headers });
       }
 
-      return new Response("Method not allowed", { status: 405 });
+      return messagePage("Method not allowed", "<p>This page only takes GET and POST.</p>", "oops", 405);
     } catch (error) {
       if (error instanceof AuthorizationError && error.redirectTo) return Response.redirect(error.redirectTo, 302);
       if (error instanceof AuthorizationError || error instanceof CimdFetchError) {
         const message = error instanceof AuthorizationError ? error.description : "This app could not be verified.";
-        return new Response(message, { status: 400, headers: { "Content-Type": "text/plain; charset=utf-8" } });
+        return messagePage("Could not connect", `<p>${escape(message)}</p><p>Start the connection again from the app.</p>`, "oops", 400);
       }
       throw error;
     }
   },
 };
+
+// The Worker's front door: what dotme is and where the owner pages are. Shows no data.
+function homePage(): Response {
+  return html(`<title>dotme</title><h1>Dotfiles for your AI agents</h1>
+${say("<p><strong>Dot follows you to every agent.</strong></p><p>This is a dotme server: self-hosted preferences for AI agents. Agents read them and propose changes; the owner approves every one.</p>", "happy")}
+<p class="actions"><a class="button" href="/approve">Pending proposals</a><a class="button secondary" href="/setup/status">Setup status</a></p>`);
+}
 
 // One provider per resource. With MCP_RESOURCE set there is only ever one; without it there is one per
 // hostname this Worker answers on, which Cloudflare limits to its own workers.dev name and routes.
