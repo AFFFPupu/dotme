@@ -193,7 +193,7 @@ export async function runChecks(env: SetupEnv, origin: string, fetcher: typeof f
   checks.push(
     env.EXPORT_TOKEN
       ? { id: "export_token", status: "ok", detail: "EXPORT_TOKEN is set, so the Claude Code and Codex hook can load preferences." }
-      : { id: "export_token", status: "warn", detail: "EXPORT_TOKEN is not set; the session-start hook cannot load preferences.", fix: "Human: generate one with `openssl rand -base64 32`, run `npm run wrangler -- secret put EXPORT_TOKEN` and paste it, and keep it for the plugin setup." }
+      : { id: "export_token", status: "warn", detail: "EXPORT_TOKEN is not set; the session-start hook cannot load preferences.", fix: "Run step 8 of INSTALL.md: it creates the token, saves it in ~/.config/dotme/auth-header and sets EXPORT_TOKEN without printing it." }
   );
 
   const passkeys = env.OAUTH_KV ? await countPasskeys(env.OAUTH_KV).catch(() => 0) : 0;
