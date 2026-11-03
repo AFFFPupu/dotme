@@ -62,7 +62,9 @@ try {
   if (!(await waitForServer())) {
     console.error(`wrangler dev did not start on ${base}:\n${log}`);
   } else {
-    code = (await run("scripts/e2e.mjs")) || (await run("scripts/elicit.mjs")) || (await run("scripts/export.mjs", exportToken)) || (await run("scripts/categories.mjs", passphrase, exportToken));
+    code = (await run("scripts/e2e.mjs")) || (await run("scripts/elicit.mjs")) || (await run("scripts/export.mjs", exportToken)) || (await run("scripts/categories.mjs", passphrase, exportToken)) ||
+      // Last, because it locks this address out of passphrase sign-in for 15 minutes.
+      (await run("scripts/ratelimit.mjs"));
     if (code) console.error(`\nwrangler dev log:\n${log}`);
   }
 } finally {

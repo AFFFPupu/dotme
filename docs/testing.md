@@ -171,6 +171,10 @@ If anything is off, `npm run wrangler -- tail` streams the Worker's logs.
 6. Back in the normal window, click **Add a passkey on this device** on the
    pending list. Pass: `This device already has a dotme passkey.`, not a
    browser error.
+7. Optional, locks passphrase sign-in for 15 minutes from this network: in
+   the private window, type a wrong passphrase four more times. Pass: the
+   fifth says `Too many wrong passphrases`, the right passphrase is refused
+   too, and **Sign in with passkey** still works.
 
 ### 4.2 Phone
 
@@ -264,7 +268,8 @@ Pass: `claude plugin list` shows `dotme` enabled. Optional:
    Allow. Pass: the dialog option is already ticked, because Claude Code is
    an app on this computer. If you signed in to `/approve` in this browser,
    the page says "Signed in as the owner" and asks for no passphrase;
-   otherwise **Sign in with passkey** or the passphrase.
+   otherwise **Sign in with passkey** or the passphrase. Signing in here
+   with the passphrase also signs you in to `/approve` in this browser.
 3. Pass: `/mcp` shows `plugin:dotme:dotme` connected.
 4. The first time an agent calls a dotme tool, Claude Code asks for
    permission. Choose "Yes, and don't ask again". dotme's own approval is
