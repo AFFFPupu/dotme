@@ -6,8 +6,9 @@ timezone). Every agent connects to the same MCP server, reads them, and
 proposes changes it notices; you approve each change on a page, and it lands
 as one commit.
 
-Early: a working server for Ao's own setup, not yet a release. The design is
-in Ao's memex: `wiki/ideas/memory-passport/v0-spec.md`.
+Early: a working server, not yet a release. Each user deploys their own copy
+to Cloudflare Workers; the design and v1 plan are in
+[docs/v1-scope.md](docs/v1-scope.md).
 
 ## How it works
 
@@ -35,16 +36,30 @@ node scripts/e2e.mjs
 
 ## Deploy
 
+This repo is a template: it holds no account-specific values. Your own
+Worker name, URL, KV namespace and data repo go in `dotme.config.json`, which
+is gitignored. `npm run configure` merges it into `wrangler.jsonc` and writes
+`wrangler.deploy.jsonc` (also gitignored); `npm run deploy` and
+`npm run wrangler -- <command>` run it first, so they always use your values.
+
 ```bash
-npx wrangler login
-npx wrangler kv namespace create OAUTH_KV        # put the id in wrangler.jsonc
-npx wrangler secret put OWNER_PASSPHRASE
-npx wrangler secret put GITHUB_TOKEN             # fine-grained, Contents read and write on GITHUB_REPO only
+npx wrangler login                               # human: sign in to Cloudflare
+npx wrangler kv namespace create OAUTH_KV        # prints the namespace id
+cp dotme.config.example.json dotme.config.json   # then fill in the four values
+npm run configure                                # checks them, writes wrangler.deploy.jsonc
+npm run wrangler -- secret put OWNER_PASSPHRASE  # human: type the passphrase
+npm run wrangler -- secret put GITHUB_TOKEN      # human: paste a fine-grained token, Contents read and write on the data repo only
 npm run deploy
 ```
 
-Set `MCP_RESOURCE` to `https://<worker>/mcp` and `GITHUB_REPO` to your
-private repo; seed it from `seed/`. Connect a client to `https://<worker>/mcp`.
+| Field | Value |
+|---|---|
+| `workerName` | The Worker's name, for example `dotme`. |
+| `url` | The Worker's origin, `https://<workerName>.<your-subdomain>.workers.dev`. Clients connect to `<url>/mcp`. |
+| `kvNamespaceId` | The id printed by `kv namespace create`. |
+| `githubRepo` | Your private data repo, `owner/name`. Seed it with the example files in `seed/`. |
+
+Connect a client to `<url>/mcp`.
 
 ## Claude Code and Codex
 

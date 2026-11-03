@@ -1,5 +1,7 @@
 // Check in-app approval: a 2026-07-28 client that declares elicitation.
+// Exits non-zero on the first failed check.
 // Usage: node scripts/elicit.mjs [baseUrl] [passphrase]
+import assert from "node:assert/strict";
 import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 import { getToken } from "./oauth.mjs";
 
@@ -22,14 +24,29 @@ const propose = (client, text) =>
 
 const inline = await getToken(base, passphrase, "inline-test", { inline: true });
 let { client, asked } = await connect(inline, { action: "accept", content: { decision: "approve", when: "tests" } });
-console.log("inline approve:", result(await propose(client, "Inline approved preference")), "| dialog:", asked[0]);
+const approved = result(await propose(client, "Inline approved preference"));
+console.log("inline approve:", approved, "| dialog:", asked[0]);
+assert.equal(approved.status, "approved and saved");
+assert.match(asked[0], /inline-test wants to add: "Inline approved preference" in coding/);
 ({ client, asked } = await connect(inline, { action: "accept", content: { decision: "reject" } }));
-console.log("inline reject:", result(await propose(client, "Inline rejected preference")));
+const rejected = result(await propose(client, "Inline rejected preference"));
+console.log("inline reject:", rejected);
+assert.equal(rejected.status, "rejected");
 ({ client, asked } = await connect(inline, { action: "decline" }));
-console.log("inline decline:", result(await propose(client, "Declined, should be pending")).status);
+const declined = result(await propose(client, "Declined, should be pending"));
+console.log("inline decline:", declined.status);
+assert.equal(declined.status, "pending approval");
 
 const plain = await getToken(base, passphrase, "plain-test");
 ({ client, asked } = await connect(plain, { action: "accept", content: { decision: "approve" } }));
-console.log("no inline permission:", result(await propose(client, "Should need the page")).status, "| dialogs shown:", asked.length);
+const linkOnly = result(await propose(client, "Should need the page"));
+console.log("no inline permission:", linkOnly.status, "| dialogs shown:", asked.length);
+assert.equal(linkOnly.status, "pending approval");
+assert.equal(asked.length, 0);
 
-console.log("coding now:", result(await client.callTool({ name: "get_preferences", arguments: { category: "coding" } })).map((p) => `${p.text} [${p.when ?? ""}] by ${p.by}`));
+const coding = result(await client.callTool({ name: "get_preferences", arguments: { category: "coding" } }));
+console.log("coding now:", coding.map((p) => `${p.text} [${p.when ?? ""}] by ${p.by}`));
+assert.ok(coding.some((p) => p.text === "Inline approved preference" && p.when === "tests" && p.by === "inline-test"));
+for (const text of ["Inline rejected preference", "Declined, should be pending", "Should need the page"]) assert.ok(!coding.some((p) => p.text === text), `${text} was saved`);
+console.log("elicit: all checks passed");
+await client.close();

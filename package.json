@@ -1,12 +1,17 @@
 {
   "name": "dotme",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
+    "configure": "node scripts/configure.mjs",
+    "deploy": "node scripts/configure.mjs && wrangler deploy --config wrangler.deploy.jsonc",
+    "wrangler": "node scripts/configure.mjs && wrangler --config wrangler.deploy.jsonc",
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "e2e": "node scripts/e2e-local.mjs",
     "check:plugins": "node scripts/check-plugins.mjs",
     "sync:plugins": "node scripts/check-plugins.mjs --fix"
   },
@@ -21,6 +26,7 @@
     "@cloudflare/workers-types": "^5.20261029.1",
     "@modelcontextprotocol/client": "^2.3.1",
     "typescript": "^7.0.2",
+    "vitest": "^5.1.0",
     "wrangler": "^4.155.0"
   },
   "allowScripts": {

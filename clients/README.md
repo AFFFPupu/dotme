@@ -28,14 +28,14 @@ Commands below use two placeholders:
 The hook reads your preferences with a read-only export token. These
 commands create it, save it in `~/.config/dotme/auth-header` (mode 600) and
 store it on the server, without the token ever being printed. Run them in
-your dotme checkout, where `wrangler` deploys your Worker:
+your dotme checkout, after `dotme.config.json` is set up (see the main README):
 
 ```bash
 mkdir -p ~/.config/dotme && chmod 700 ~/.config/dotme
 printf 'https://<worker>\n' > ~/.config/dotme/url
 ( umask 077; t=$(openssl rand -hex 32)
   printf 'Authorization: Bearer %s\n' "$t" > ~/.config/dotme/auth-header
-  printf '%s' "$t" | npx wrangler secret put EXPORT_TOKEN )
+  printf '%s' "$t" | npm run -s wrangler -- secret put EXPORT_TOKEN )
 ```
 
 Check it:
