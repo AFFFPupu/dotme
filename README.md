@@ -15,8 +15,10 @@ to Cloudflare Workers; the design and v1 plan are in
 
 - `/mcp`: OAuth-protected MCP endpoint. Tools: `whoami`, `list_categories`,
   `get_preferences`, `propose_change`, `list_pending`.
-- `/authorize`: consent page. You name the agent, tick the categories it may
-  see and enter the owner passphrase. The name is stamped on its proposals.
+- `/authorize`: consent page. You confirm the agent's name (pre-filled from
+  the app) and the categories it may see, and sign in if you are not already.
+  The name is stamped on its proposals. What each choice means:
+  [clients/README.md](clients/README.md#what-you-choose-and-what-to-pick).
 - `/approve`: owner page. Shows each proposal's diff, evidence and conflicts;
   approve (optionally scoped with "only applies when"), or reject. Sign in
   with the passphrase once per device, then set up a passkey right there to

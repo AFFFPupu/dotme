@@ -259,12 +259,17 @@ Pass: `claude plugin list` shows `dotme` enabled. Optional:
 
 1. Start `claude`, run `/mcp`, pick `plugin:dotme:dotme`, choose to
    authenticate.
-2. **Human only:** on the consent page, name the agent `claude-code`, keep
-   `collab` and `coding` ticked (add `life` if you want), tick **Let this app
-   ask me to approve changes in its own dialog**, and click Allow. If you
-   signed in to `/approve` in this browser, no passphrase is needed;
-   otherwise type it.
-3. Pass: `/mcp` shows `dotme` connected.
+2. **Human only:** on the consent page, set the agent name to `claude-code`
+   (it is pre-filled from the app's name), keep the categories, and click
+   Allow. Pass: the dialog option is already ticked, because Claude Code is
+   an app on this computer. If you signed in to `/approve` in this browser,
+   the page says "Signed in as the owner" and asks for no passphrase;
+   otherwise **Sign in with passkey** or the passphrase.
+3. Pass: `/mcp` shows `plugin:dotme:dotme` connected.
+4. The first time an agent calls a dotme tool, Claude Code asks for
+   permission. Choose "Yes, and don't ask again". dotme's own approval is
+   the real check for changes, so a second prompt per proposal adds
+   nothing.
 
 ### 5.5 The hook
 
@@ -349,8 +354,9 @@ codex mcp add dotme --url <url>/mcp
 codex mcp login dotme
 ```
 
-**Human only:** on the consent page, name the agent `codex`, tick the
-categories and the dialog option, and Allow.
+**Human only:** on the consent page, set the agent name to `codex`, keep
+the categories and the ticked dialog option, and Allow. If Codex asks
+whether to allow a dotme tool call, allow it for the session or always.
 
 Pass: `codex mcp list` shows `dotme`.
 
@@ -399,8 +405,8 @@ in coding." Approve it. Pass: a new commit in `<data-repo>` removes it, and
 
 1. In claude.ai, open Settings, Connectors. If dotme is not there, add a
    custom connector with the URL `<url>/mcp`, connect, and on the consent
-   page name the agent `claude-ai`. Leave the dialog option unticked;
-   claude.ai approves through the link.
+   page set the agent name to `claude-ai`. Pass: the dialog option is
+   unticked, because claude.ai is a web app; it approves through the link.
 2. In a new chat with the connector on: "Call dotme whoami, then show my
    collab preferences." Pass: agent `claude-ai`, and the preferences match
    your data repo.
@@ -443,7 +449,7 @@ release blockers; note in the table whether connecting and `whoami` work.
 | Hook says `the export token was refused (HTTP 401)` | `~/.config/dotme/auth-header` does not match the server's `EXPORT_TOKEN`; redo 5.1. Setting a new token on one machine breaks the old one on others; copy the two files instead. |
 | Hook says `not set up on this machine` | `~/.config/dotme/url` or `auth-header` is missing. |
 | Preferences load twice | The old `sync.sh` hook or a hand-added MCP server is still configured; see 5.2. |
-| No dialog, only a link | The connection was authorized without the dialog option (reconnect and tick it); in Claude Code, the synced `claude.ai dotme` connector is used instead of the plugin (5.2); in Codex, `mcp_2026_07_28` is off or not sent (6.4). `npm run wrangler -- tail` shows which. |
+| No dialog, only a link | The connection was authorized without the dialog option (reconnect with it ticked); in Claude Code, the synced `claude.ai dotme` connector is used instead of the plugin (5.2); in Codex, `mcp_2026_07_28` is off or not sent (6.4). `npm run wrangler -- tail` shows which. |
 | `whoami` in Claude Code says `claude-ai` | The claude.ai connector shadows the plugin's server; disable `claude.ai dotme` in `/mcp` (5.2). |
 | The agent stops and asks for evidence | `evidence` is under 10 characters. Say what you said or did, and when. |
 | Codex loads no preferences | Codex 0.164 and later removed plugin hooks; install the manual hook (6.1). |

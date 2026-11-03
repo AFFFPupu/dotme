@@ -9,7 +9,8 @@ import { CLIENT_CAPABILITIES_META_KEY, McpServer, PROTOCOL_VERSION_META_KEY, acc
 import { createMcpHandler, getMcpAuthContext } from "agents/mcp/server";
 import { env as workerEnv } from "cloudflare:workers";
 import { z } from "zod";
-import { escape, handleApprovalPages, html, samePassphrase } from "./pages";
+import { escape, handleApprovalPages, hasSession, html, samePassphrase } from "./pages";
+import { hasPasskeys, PASSKEY_SCRIPT } from "./passkeys";
 import { approve, getPreferences, isCategory, listPending, propose } from "./dotme";
 import { CATEGORIES, cleanLine } from "./prefs";
 import type { Category, Preference } from "./prefs";
@@ -34,6 +35,19 @@ Propose a change only after asking the user in conversation, with specific evide
 (what they said or did, and when). When a new preference seems to contradict an old one,
 ask whether it applies only in some situations and propose it with "when" instead of
 replacing the old one.`;
+
+// What each category is for, shown on the consent page.
+const CATEGORY_HINTS: Record<Category, string> = {
+  collab: "how to work and talk with you",
+  coding: "stack, tools and code style",
+  life: "personal facts such as timezone",
+};
+
+// A starting agent name from the app's own name ("Claude Code" -> "claude-code"); the owner can change it.
+function suggestedAgentName(clientName: string): string {
+  const slug = clientName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 32).replace(/-+$/, "");
+  return /^[a-z0-9-]{2,32}$/.test(slug) ? slug : "";
+}
 
 const text = (value: unknown) => ({ content: [{ type: "text" as const, text: typeof value === "string" ? value : JSON.stringify(value, null, 2) }] });
 
@@ -75,6 +89,11 @@ const approvalSchema = z.object({
   when: z.string().max(120).optional().describe("Only applies when (optional), e.g. personal projects"),
 });
 
+// Read-only tools say so, so clients can run them without asking each time. propose_change changes
+// nothing by itself either (the owner approves), but it is not marked read-only because it can open
+// a proposal or, with in-client approval, save after the owner accepts.
+const READ_ONLY = { readOnlyHint: true, openWorldHint: false } as const;
+
 function allowed(category: Category) {
   if (!caller().categories.includes(category)) throw new Error(`This connection cannot access ${category}`);
 }
@@ -86,13 +105,13 @@ function createServer() {
 
   server.registerTool(
     "whoami",
-    { description: "Which agent this connection was authorized as, and the categories it can access." },
+    { description: "Which agent this connection was authorized as, and the categories it can access.", annotations: READ_ONLY },
     async () => text({ ...caller(), authorizedAt: getMcpAuthContext()?.props.authorizedAt })
   );
 
   server.registerTool(
     "list_categories",
-    { description: "Categories this connection can read, with how many preferences each holds." },
+    { description: "Categories this connection can read, with how many preferences each holds.", annotations: READ_ONLY },
     async () => {
       const counts = await Promise.all(caller().categories.map(async (c) => [c, (await getPreferences(store, c)).length]));
       return text(Object.fromEntries(counts));
@@ -104,6 +123,7 @@ function createServer() {
     {
       description: "The user's preferences in one category. Each has an id (use it as `replaces`) and an optional `when` scope.",
       inputSchema: { category },
+      annotations: READ_ONLY,
     },
     async ({ category }) => {
       allowed(category);
@@ -116,6 +136,7 @@ function createServer() {
     {
       description:
         "Propose adding, changing or removing a preference. Ask the user first. Returns a link: send it to the user, who approves or rejects there. Nothing changes until they do.",
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
       inputSchema: {
         category,
         op: z.enum(["add", "change", "remove"]),
@@ -189,7 +210,7 @@ function createServer() {
 
   server.registerTool(
     "list_pending",
-    { description: "Open proposals in the categories this connection can access, oldest first." },
+    { description: "Open proposals in the categories this connection can access, oldest first.", annotations: READ_ONLY },
     async () => text(await listPending(store, caller().categories))
   );
 
@@ -247,7 +268,16 @@ const AuthHandler = {
         const source = details.clientDomain
           ? `Published by <strong>${escape(details.clientDomain)}</strong>.`
           : "This app registered itself; its name is not verified.";
-        const boxes = CATEGORIES.map((c) => `<label><input type="checkbox" name="category" value="${c}" checked> ${c}</label>`).join(" ");
+        const signedIn = await hasSession(request, env.OWNER_PASSPHRASE);
+        const boxes = CATEGORIES.map(
+          (c) => `<label><input type="checkbox" name="category" value="${c}" checked> <strong>${c}</strong>: ${CATEGORY_HINTS[c]}</label><br>`
+        ).join("\n");
+        // Apps on this computer (Claude Code, Codex) can show their own approval dialog; web apps use the link.
+        const inline = details.redirectIsLoopback ? " checked" : "";
+        const owner = signedIn
+          ? "<p>Signed in as the owner.</p>"
+          : `${(await hasPasskeys(env.OAUTH_KV)) ? `<p><button type="button" onclick="passkey('login')">Sign in with passkey</button> or type the passphrase:</p>${PASSKEY_SCRIPT}` : ""}
+  <p><label>Passphrase <input name="passphrase" type="password" required></label></p>`;
         return html(
           `<title>Connect ${escape(details.clientName)}</title>
 <h1>Connect ${escape(details.clientName)} to dotme?</h1>
@@ -255,10 +285,10 @@ const AuthHandler = {
 ${details.redirectIsLoopback ? "<p><strong>This sends access to an app on your computer.</strong> Continue only if you just started connecting from it.</p>" : ""}
 <form method="post">
   <input type="hidden" name="handle" value="${escape(consent.handle)}">
-  <p><label>Name this agent <input name="agent" required pattern="[a-z0-9-]{2,32}" placeholder="grok-bot"></label></p>
-  <p>Categories it may read and propose to: ${boxes}</p>
-  <p><label><input type="checkbox" name="inline"> Let this app ask me to approve changes in its own dialog (only for apps you trust, such as Claude Code)</label></p>
-  <p><label>Passphrase <input name="passphrase" type="password" required></label></p>
+  <p><label>Agent name, shown on its proposals<br><input name="agent" required pattern="[a-z0-9-]{2,32}" value="${escape(suggestedAgentName(details.clientName))}" placeholder="claude-code"></label></p>
+  <p>It may read and propose changes to:<br>${boxes}</p>
+  <p><label><input type="checkbox" name="inline"${inline}> Approve changes in this app's own dialog. Leave it off for apps you do not fully trust; you then approve on a link. Apps that cannot show a dialog use the link anyway.</label></p>
+  ${owner}
   <p><button name="decision" value="approve">Allow</button> <button name="decision" value="deny" formnovalidate>Deny</button></p>
 </form>`,
           consent.headers
@@ -272,7 +302,9 @@ ${details.redirectIsLoopback ? "<p><strong>This sends access to an app on your c
           const denied = await oauth.denyConsent(request, handle);
           return new Response(null, { status: 302, headers: denied.headers });
         }
-        if (!(await samePassphrase(String(form.get("passphrase") ?? ""), env.OWNER_PASSPHRASE))) {
+        // A signed-in owner (passkey or passphrase on /approve) does not type the passphrase again.
+        const owner = (await hasSession(request, env.OWNER_PASSPHRASE)) || (await samePassphrase(String(form.get("passphrase") ?? ""), env.OWNER_PASSPHRASE));
+        if (!owner) {
           return new Response("Wrong passphrase. Go back and start the connection again.", { status: 403 });
         }
         const agent = String(form.get("agent") ?? "");

@@ -1,7 +1,9 @@
 // Get an access token from a dotme server by running the OAuth flow as a test client.
 import { createHash, randomBytes } from "node:crypto";
 
-export async function getToken(base, passphrase, agent, { inline = false } = {}) {
+// With `session` (an owner_session cookie), the consent form is sent without the passphrase;
+// `onPage` receives the consent page's HTML.
+export async function getToken(base, passphrase, agent, { inline = false, session, onPage } = {}) {
   const redirectUri = "http://localhost:9999/callback";
   const meta = await (await fetch(`${base}/.well-known/oauth-authorization-server`)).json();
   const client = await (await fetch(meta.registration_endpoint, {
@@ -17,10 +19,12 @@ export async function getToken(base, passphrase, agent, { inline = false } = {})
     response_type: "code", client_id: client.client_id, redirect_uri: redirectUri,
     code_challenge: challenge, code_challenge_method: "S256", scope: "mcp:read", state: "s", resource,
   })) authUrl.searchParams.set(k, v);
-  const page = await fetch(authUrl);
-  const cookie = page.headers.getSetCookie().map((c) => c.split(";")[0]).join("; ");
-  const handle = (await page.text()).match(/name="handle" value="([^"]+)"/)[1];
-  const fields = [["handle", handle], ["agent", agent], ["passphrase", passphrase], ["decision", "approve"], ["category", "collab"], ["category", "coding"], ["category", "life"]];
+  const page = await fetch(authUrl, { headers: session ? { Cookie: session } : {} });
+  const cookie = [session, ...page.headers.getSetCookie().map((c) => c.split(";")[0])].filter(Boolean).join("; ");
+  const body = await page.text();
+  onPage?.(body);
+  const handle = body.match(/name="handle" value="([^"]+)"/)[1];
+  const fields = [["handle", handle], ["agent", agent], ...(session ? [] : [["passphrase", passphrase]]), ["decision", "approve"], ["category", "collab"], ["category", "coding"], ["category", "life"]];
   if (inline) fields.push(["inline", "on"]);
   const post = await fetch(authUrl, {
     method: "POST", redirect: "manual",

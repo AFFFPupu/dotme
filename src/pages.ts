@@ -41,7 +41,7 @@ async function signSession(passphrase: string): Promise<string> {
   return `${expires}.${btoa(String.fromCharCode(...new Uint8Array(sig)))}`;
 }
 
-async function hasSession(request: Request, passphrase: string): Promise<boolean> {
+export async function hasSession(request: Request, passphrase: string): Promise<boolean> {
   const value = request.headers.get("Cookie")?.match(new RegExp(`${COOKIE}=([^;]+)`))?.[1];
   if (!value) return false;
   const [expires, sig] = decodeURIComponent(value).split(".");

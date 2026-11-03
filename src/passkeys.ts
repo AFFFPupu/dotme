@@ -120,7 +120,9 @@ async function passkey(kind) {
     const res = await fetch('/approve/passkey/' + kind, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(credential.toJSON()) });
     if (!res.ok) throw new Error(await res.text());
     if (kind === 'register') alert('Passkey added. Next time, sign in with it.');
-    location.replace(location.pathname);
+    const next = new URL(location.href);
+    next.searchParams.delete('passkey');
+    location.replace(next);
   } catch (e) {
     if (kind === 'register' && e.name === 'InvalidStateError') alert('This device already has a dotme passkey. Sign in with it next time.');
     else if (e.name === 'NotAllowedError') alert('No passkey was used. The prompt was cancelled or timed out.');
