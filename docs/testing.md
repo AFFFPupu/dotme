@@ -320,6 +320,21 @@ out. With a shorter one, such as "test", the agent stops and asks you.
 
 Keep the pnpm preference for the Codex test, then remove it in step 6.5.
 
+### 5.7 A new category
+
+CI covers this with KV storage; this checks it against the GitHub data repo.
+
+1. In `<data-repo>`, add `work.md` at the root with one line, `# work`, and
+   push.
+2. In the Claude Code session from 5.6: "Call dotme list_categories."
+   Pass: `work` is not listed, because this connection was authorized
+   before the file existed.
+3. Run `/mcp`, pick `plugin:dotme:dotme` and authenticate again. Pass: the
+   consent page lists `work` after `collab`, `coding` and `life`. Keep it
+   ticked and Allow.
+4. "Call dotme list_categories." Pass: `work` is listed with 0 preferences.
+5. Delete `work.md` from `<data-repo>` and push, unless you want to keep it.
+
 ## 6. Codex
 
 ### 6.1 Install the plugin and the hook

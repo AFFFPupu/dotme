@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { approve, conflictsWith, getPreferences, getProposal, isCategory, listPending, propose, reject } from "../src/dotme";
+import { approve, conflictsWith, getPreferences, getProposal, listCategories, listPending, propose, reject } from "../src/dotme";
+import { isCategoryName } from "../src/prefs";
 import type { Proposal } from "../src/prefs";
 import type { Store } from "../src/store";
 import { memoryStore } from "./memory-store";
 
 const input = (extra: Partial<Proposal> = {}) => ({
-  category: "coding" as const,
+  category: "coding",
   op: "add" as const,
   text: "Prefer Cloudflare over Supabase",
   evidence: "user said so on 2026-10-29",
@@ -155,11 +156,49 @@ describe("conflictsWith", () => {
   });
 });
 
-describe("isCategory", () => {
-  it("accepts only known categories", () => {
-    expect(isCategory("coding")).toBe(true);
-    expect(isCategory("Coding")).toBe(false);
-    expect(isCategory("../coding")).toBe(false);
-    expect(isCategory(undefined)).toBe(false);
+describe("listCategories", () => {
+  it("starts with the defaults before any file exists", async () => {
+    expect(await listCategories(store)).toEqual(["collab", "coding", "life"]);
+  });
+
+  it("adds each lowercase Markdown file at the root, after the defaults", async () => {
+    for (const path of ["work.md", "coding.md", "health.md", "README.md", "notes.txt", "pending/q-00000001.json", "archive/old.md", "Bad Name.md"]) {
+      store.files.set(path, "# x\n");
+    }
+    expect(await listCategories(store)).toEqual(["collab", "coding", "life", "health", "work"]);
+  });
+});
+
+describe("listPending without categories", () => {
+  it("returns every open proposal, for the owner", async () => {
+    await propose(store, input());
+    await propose(store, input({ category: "work" }));
+    expect((await listPending(store)).map((p) => p.category).sort()).toEqual(["coding", "work"]);
+  });
+});
+
+describe("propose to a new category", () => {
+  it("creates the category file on approval", async () => {
+    await approve(store, (await propose(store, input({ category: "work" }))).id, undefined);
+    expect(store.files.get("work.md")).toMatch(/^# work\n/);
+    expect(await listCategories(store)).toContain("work");
+  });
+
+  it("refuses names that are not plain lowercase file names", async () => {
+    for (const category of ["../coding", "pending/x", "Coding", ""]) {
+      await expect(propose(store, input({ category }))).rejects.toThrow("Invalid category name");
+    }
+  });
+});
+
+describe("isCategoryName", () => {
+  it("accepts only plain lowercase names", () => {
+    expect(isCategoryName("coding")).toBe(true);
+    expect(isCategoryName("side-projects")).toBe(true);
+    expect(isCategoryName("Coding")).toBe(false);
+    expect(isCategoryName("README")).toBe(false);
+    expect(isCategoryName("../coding")).toBe(false);
+    expect(isCategoryName("-x")).toBe(false);
+    expect(isCategoryName(undefined)).toBe(false);
   });
 });

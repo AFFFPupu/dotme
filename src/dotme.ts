@@ -1,7 +1,7 @@
 // Reads, proposals and approvals over the store. Agents can only propose;
 // only the owner, on the approval page, turns a proposal into a commit.
 
-import { applyProposal, CATEGORIES, newId, parsePreferences, serializePreferences } from "./prefs";
+import { applyProposal, DEFAULT_CATEGORIES, isCategoryName, newId, parsePreferences, serializePreferences } from "./prefs";
 import type { Category, Preference, Proposal } from "./prefs";
 import type { Store } from "./store";
 
@@ -14,6 +14,7 @@ export async function getPreferences(store: Store, category: Category): Promise<
 }
 
 export async function propose(store: Store, input: Omit<Proposal, "id" | "createdAt">): Promise<Proposal> {
+  if (!isCategoryName(input.category)) throw new Error(`Invalid category name: ${input.category}`);
   if (input.op !== "add") {
     const existing = await getPreferences(store, input.category);
     if (!existing.some((p) => p.id === input.replaces)) throw new Error(`No preference ${input.replaces} in ${input.category}`);
@@ -30,10 +31,22 @@ export async function getProposal(store: Store, id: string): Promise<{ proposal:
   return file ? { proposal: JSON.parse(file.content) as Proposal, sha: file.sha } : null;
 }
 
-export async function listPending(store: Store, categories: readonly Category[]): Promise<Proposal[]> {
+// Every category in the store: the defaults plus each `<name>.md` file at the root, sorted with the
+// defaults first. Adding a file adds a category; existing connections only see it once re-authorized.
+export async function listCategories(store: Store): Promise<Category[]> {
+  const found = (await store.list(""))
+    .map((path) => path.match(/^([^/]+)\.md$/)?.[1])
+    .filter(isCategoryName)
+    .filter((name) => !(DEFAULT_CATEGORIES as readonly string[]).includes(name))
+    .sort();
+  return [...DEFAULT_CATEGORIES, ...new Set(found)];
+}
+
+// Open proposals, oldest first. Without `categories` (the owner's view), every category.
+export async function listPending(store: Store, categories?: readonly Category[]): Promise<Proposal[]> {
   const paths = await store.list("pending");
   const proposals = await Promise.all(paths.map(async (path) => JSON.parse((await store.read(path))!.content) as Proposal));
-  return proposals.filter((p) => categories.includes(p.category)).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  return proposals.filter((p) => !categories || categories.includes(p.category)).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 }
 
 // Other open proposals touching the same preference, shown next to this one.
@@ -70,8 +83,4 @@ export async function approve(store: Store, id: string, when: string | undefined
 export async function reject(store: Store, id: string): Promise<void> {
   const found = await getProposal(store, id);
   if (found) await store.remove(pendingPath(id), found.sha, `Close proposal ${id}: rejected`);
-}
-
-export function isCategory(value: unknown): value is Category {
-  return CATEGORIES.includes(value as Category);
 }

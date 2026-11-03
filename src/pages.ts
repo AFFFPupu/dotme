@@ -1,7 +1,7 @@
 // Owner-facing pages: sign-in with the passphrase, then the approval page.
 
 import { approve, conflictsWith, getPreferences, getProposal, listPending, reject } from "./dotme";
-import { CATEGORIES, cleanLine } from "./prefs";
+import { cleanLine } from "./prefs";
 import { authenticate, authenticationOptions, hasPasskeys, PASSKEY_SCRIPT, register, registrationOptions } from "./passkeys";
 import { checkPassphrase, lockMessage } from "./ratelimit";
 import type { Store } from "./store";
@@ -124,7 +124,7 @@ export async function handleApprovalPages(request: Request, passphrase: string, 
   if (!found) return html(`${offer}<h1>Already handled</h1><p>This proposal was approved, rejected or never existed.</p><p><a href="/approve">All pending</a></p>`, new Headers(), 404);
   const { proposal } = found;
   const current = (await getPreferences(store, proposal.category)).find((p) => p.id === proposal.replaces);
-  const others = conflictsWith(proposal, await listPending(store, CATEGORIES));
+  const others = conflictsWith(proposal, await listPending(store));
 
   const diff =
     proposal.op === "add"
@@ -151,7 +151,7 @@ function passkeyOffer(path: string): string {
 }
 
 async function pendingListPage(store: Store, passkeys: boolean, offer: string): Promise<Response> {
-  const pending = await listPending(store, CATEGORIES);
+  const pending = await listPending(store);
   const rows = pending.map((p) => `<li><a href="/approve/${escape(p.id)}">${escape(p.by)} · ${escape(p.category)} · ${escape(p.op)}: ${escape(p.text ?? p.replaces ?? "")}</a></li>`);
   return html(`<title>Pending</title>${offer}<h1>Pending proposals</h1>${rows.length ? `<ul>${rows.join("")}</ul>` : "<p>Nothing pending.</p>"}
 <p><button onclick="passkey('register')">${passkeys ? "Add a passkey on this device" : "Set up a passkey (Face ID or Touch ID)"}</button></p>${offer ? "" : PASSKEY_SCRIPT}`);

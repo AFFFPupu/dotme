@@ -35,6 +35,11 @@ to Cloudflare Workers; the design and v1 plan are in
 - Storage: the private repo in `GITHUB_REPO` (one Markdown file per
   category, `pending/` for open proposals), or KV with `STORAGE=kv` for
   local development.
+- Categories: `collab`, `coding` and `life` always exist. Add your own by
+  pushing a Markdown file with a lowercase name, such as `work.md`, to the
+  root of the data repo. Existing connections do not see it until you
+  connect them again and tick it on the consent page, so a new private
+  category never leaks to an agent you already trusted.
 
 ## Run locally
 
