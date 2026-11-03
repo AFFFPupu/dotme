@@ -7,7 +7,7 @@ proposes changes it notices; you approve each change on a page, and it lands
 as one commit.
 
 Early: a working server, not yet a release. Each user deploys their own copy
-to Cloudflare Workers; the design and v1 plan are in
+to Cloudflare Workers ([INSTALL.md](INSTALL.md)); the design and v1 plan are in
 [docs/v1-scope.md](docs/v1-scope.md). To test a deploy end to end, follow
 [docs/testing.md](docs/testing.md).
 
@@ -41,6 +41,22 @@ to Cloudflare Workers; the design and v1 plan are in
   connect them again and tick it on the consent page, so a new private
   category never leaks to an agent you already trusted.
 
+## Install
+
+Paste this into Claude Code or Codex, opened in an empty folder:
+
+> Install dotme by following INSTALL.md in https://github.com/AFFFPupu/dotme
+
+[INSTALL.md](INSTALL.md) walks the agent through the whole setup: a private
+data repo, a Cloudflare Worker, secrets you type yourself, passkeys and the
+client plugins. `<url>/setup/status` reports what is configured and what is
+missing, so you and the agent can check every step.
+
+This repo is a template and holds no account-specific values. Your own
+Worker name, URL, KV namespace and data repo go in the gitignored
+`dotme.config.json`; `npm run deploy` and `npm run wrangler -- <command>` use
+them. Never run a bare `wrangler deploy`.
+
 ## Run locally
 
 ```bash
@@ -49,48 +65,6 @@ printf 'OWNER_PASSPHRASE=local-test-passphrase\nMCP_RESOURCE=http://localhost:87
 npm run dev
 node scripts/e2e.mjs
 ```
-
-## Deploy
-
-This repo is a template: it holds no account-specific values. Your own
-Worker name, URL, KV namespace and data repo go in `dotme.config.json`, which
-is gitignored. `npm run configure` merges it into `wrangler.jsonc` and writes
-`wrangler.deploy.jsonc` (also gitignored); `npm run deploy` and
-`npm run wrangler -- <command>` run it first, so they always use your values.
-
-```bash
-npx wrangler login                               # human: sign in to Cloudflare
-npx wrangler kv namespace create OAUTH_KV        # prints the namespace id
-cp dotme.config.example.json dotme.config.json   # then fill in the four values
-npm run configure                                # checks them, writes wrangler.deploy.jsonc
-npm run wrangler -- secret put OWNER_PASSPHRASE  # human: type the passphrase
-npm run wrangler -- secret put GITHUB_TOKEN      # human: paste a fine-grained token, Contents read and write on the data repo only
-npm run deploy
-```
-
-| Field | Value |
-|---|---|
-| `workerName` | The Worker's name, for example `dotme`. |
-| `url` | The Worker's origin, `https://<workerName>.<your-subdomain>.workers.dev`. Clients connect to `<url>/mcp`. |
-| `kvNamespaceId` | The id printed by `kv namespace create`. |
-| `githubRepo` | Your private data repo, `owner/name`. Seed it with the example files in `seed/`. |
-
-Then check the install:
-
-```bash
-curl -sS <url>/setup/status   # JSON; open it in a browser for a readable page
-```
-
-It reports each piece as `ok`, `warn`, `fail` or `skip`: the passphrase, the
-`MCP_RESOURCE` URL, KV, the data repo (reachable and private), the GitHub
-token (accepted, can write, and its expiry), the export token and passkeys.
-Each item that is not `ok` says how to fix it, and fixes only a human can do
-(typing a secret, adding a passkey) start with `Human:`. It never shows secret
-values. `ok: true` means dotme works; `allGreen: true` means nothing is left.
-From 30 days before the GitHub token expires, the status page and the approval
-page show a warning.
-
-Connect a client to `<url>/mcp`.
 
 ## Claude Code and Codex
 
