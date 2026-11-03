@@ -19,16 +19,22 @@ async function connect(token, answer) {
   return { client, asked };
 }
 const result = (r) => JSON.parse(r.content[0].text);
-const propose = (client, text) =>
-  client.callTool({ name: "propose_change", arguments: { category: "coding", op: "add", text, evidence: "elicit test, 2026-10-29" } });
+const propose = (client, text, when) =>
+  client.callTool({ name: "propose_change", arguments: { category: "coding", op: "add", text, ...(when && { when }), evidence: "elicit test, 2026-10-29" } });
 
 const inline = await getToken(base, passphrase, "inline-test", { inline: true });
-let { client, asked } = await connect(inline, { action: "accept", content: { when: "tests" } });
-const approved = result(await propose(client, "Inline approved preference"));
+let { client, asked } = await connect(inline, { action: "accept", content: {} });
+const approved = result(await propose(client, "Inline approved preference", "tests"));
 console.log("inline approve:", approved, "| dialog:", asked[0]);
 assert.equal(approved.status, "approved and saved");
-assert.match(asked[0], /inline-test wants to add: "Inline approved preference" in coding/);
+assert.match(asked[0], /inline-test wants to add: "Inline approved preference" in coding, only when: tests\./);
 assert.match(asked[0], /Accept saves it now\. Decline or close this/);
+// A client that accepts an empty form may send no content at all; that still saves.
+({ client, asked } = await connect(inline, { action: "accept" }));
+const bare = result(await propose(client, "Accepted without content"));
+console.log("inline accept, no content:", bare.status, "|", asked[0].split(".")[0]);
+assert.equal(bare.status, "approved and saved");
+assert.match(asked[0], /in coding, always\./);
 ({ client, asked } = await connect(inline, { action: "decline" }));
 const declined = result(await propose(client, "Declined, should be pending"));
 console.log("inline decline:", declined.status);
@@ -48,6 +54,7 @@ assert.equal(asked.length, 0);
 const coding = result(await client.callTool({ name: "get_preferences", arguments: { category: "coding" } }));
 console.log("coding now:", coding.map((p) => `${p.text} [${p.when ?? ""}] by ${p.by}`));
 assert.ok(coding.some((p) => p.text === "Inline approved preference" && p.when === "tests" && p.by === "inline-test"));
+assert.ok(coding.some((p) => p.text === "Accepted without content" && p.when === undefined));
 for (const text of ["Declined, should be pending", "Dismissed, should be pending", "Should need the page"]) assert.ok(!coding.some((p) => p.text === text), `${text} was saved`);
 console.log("elicit: all checks passed");
 await client.close();
