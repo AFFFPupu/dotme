@@ -19,6 +19,10 @@
   <img src="https://img.shields.io/badge/protocol-MCP-2A2238" alt="MCP">
 </p>
 
+<!-- TODO(demo video): put the 60-90s screen recording of the full loop here,
+     replacing or above hero.gif. Shot list: docs/media/demo-shot-list.md.
+     To embed: drag the .mp4 into the README editor on github.com and keep
+     the user-attachments URL it inserts on a line of its own. -->
 <p align="center">
   <img src="docs/media/hero.gif" alt="Tell Claude Code to use pnpm, approve the change once, and a new Codex session already uses pnpm" width="960">
 </p>
@@ -33,6 +37,10 @@ stack, and facts such as your timezone. Every agent reads them through one
 MCP server. When an agent notices something new, it **proposes** a change;
 nothing is saved until you approve it, and every approval lands as a commit
 that names the agent and its evidence.
+
+**Why I built this:** I use a growing pile of agents, and each one keeps its
+own memory of me. I wanted one memory I own, light enough to work across all
+of them.
 
 - **One source of truth.** Claude Code, Codex, claude.ai, Grok Bot and any
   MCP client with OAuth read the same preferences.
@@ -90,6 +98,15 @@ batch approval, and the setup status page.
 
 </details>
 
+## What you need
+
+- A GitHub account
+- A free Cloudflare account
+- Claude Code or Codex, to run the install for you
+
+The install also checks for Node 24 or later and `git`. Setup takes about
+5 minutes.
+
 ## Install
 
 ### Let your agent do it
@@ -127,6 +144,13 @@ the GitHub token first, then connect your agents; see
 
 Setup for each client, and what to pick on the consent page, is in
 [clients/README.md](clients/README.md).
+
+**Known weak spot: cloud clients.** Claude Code and Codex load your
+preferences with a session hook, so they always have them. claude.ai, Grok
+Bot and other web clients have no hook: they only see your preferences when
+they call `get_preferences`, and they don't always do that on their own. If
+one ignores a preference, ask it to read dotme first, or put that request in
+the client's own custom instructions.
 
 Both plugins also ship two skills:
 

@@ -1,7 +1,7 @@
 # Install dotme
 
 dotme runs as your own Cloudflare Worker and keeps your preferences in your
-own private GitHub repo. Installing it takes about 15 minutes. You can do it
+own private GitHub repo. Installing it takes about 5 minutes. You can do it
 by hand, but it is written so that your coding agent can do it with you:
 open Claude Code or Codex in an empty folder and say
 

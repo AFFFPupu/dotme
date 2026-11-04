@@ -185,6 +185,9 @@ Clients that run in the cloud need no plugin. They connect to
 `https://<worker>/mcp` with OAuth: you sign in on dotme's consent page, and
 they approve changes on a link (they cannot show dotme's dialog). There is no
 session hook, so the agent reads preferences when it calls `get_preferences`.
+It doesn't always do that on its own, so a cloud agent can miss a preference
+that a Claude Code or Codex session would follow. When that happens, ask it to
+read dotme first, or add that request to the client's custom instructions.
 
 ### Grok
 
