@@ -31,7 +31,7 @@ none of them share it.
 private GitHub repo you own: how agents should talk and work with you, your
 stack, and facts such as your timezone. Every agent reads them through one
 MCP server. When an agent notices something new, it **proposes** a change;
-nothing is saved until you approve it, and each approval lands as one commit
+nothing is saved until you approve it, and every approval lands as a commit
 that names the agent and its evidence.
 
 - **One source of truth.** Claude Code, Codex, claude.ai, Grok Bot and any
@@ -51,7 +51,7 @@ flowchart LR
     CX["Codex"] --> W
     CA["claude.ai"] --> W
     GB["Grok Bot"] --> W
-    W["Your dotme Worker<br/>(MCP + OAuth)"] -- "approved changes,<br/>one commit each" --> R[("Your private<br/>GitHub repo")]
+    W["Your dotme Worker<br/>(MCP + OAuth)"] -- "approved changes,<br/>as commits" --> R[("Your private<br/>GitHub repo")]
     W -. "approve or reject" .-> Y(("You"))
 ```
 

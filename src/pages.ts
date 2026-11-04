@@ -1,6 +1,6 @@
 // Owner-facing pages: sign-in with the passphrase, then the approval page.
 
-import { approve, approveFound, conflictsWith, getPreferences, getProposal, listPending, ProposalError, reject, rejectFound } from "./dotme";
+import { approve, conflictsWith, decide, getPreferences, getProposal, listPending, ProposalError, reject } from "./dotme";
 import type { Category, Preference, Proposal } from "./prefs";
 import { cleanLine } from "./prefs";
 import { authenticate, authenticationOptions, hasPasskeys, PASSKEY_SCRIPT, register, registrationOptions } from "./passkeys";
@@ -155,36 +155,24 @@ ${say(`<p>${escape(detail)}${hint}</p>`, "oops")}
 <p>${id ? `<a href="/approve/${escape(id)}">Back to the proposal</a> · ` : ""}<a href="/approve">All pending</a></p>`, new Headers(), known ? 409 : 502);
 }
 
-// Most proposals a single request decides. Each approval is a few GitHub calls and a Worker request
-// has a subrequest budget, so a longer selection is decided over several presses.
-export const BATCH_LIMIT = 10;
+// Most proposals a single request decides. A batch is one commit and a fixed number of GitHub calls
+// whatever its size, so this only bounds the request itself; more than this is decided over several presses.
+export const BATCH_LIMIT = 100;
 
-// Approve or reject the proposals ticked on the pending list. Each approval is still its own commit.
+// Approve or reject the proposals ticked on the pending list, all in one commit.
 // Proposals touching the same preference are skipped: they need a decision one at a time.
 async function batchDecision(store: Store, form: FormData): Promise<Response> {
   const decision = form.get("decision");
   if (decision !== "approve" && decision !== "reject") return new Response(null, { status: 303, headers: { Location: "/approve" } });
   const ids = [...new Set(form.getAll("id").map(String))];
   const chosen = ids.slice(0, BATCH_LIMIT);
-  const counts = { done: 0, gone: 0, skipped: 0, failed: 0, left: ids.length - chosen.length };
-
-  const found = (await Promise.all(chosen.map((id) => getProposal(store, id)))).filter((f) => f !== null);
-  counts.gone = chosen.length - found.length;
-  const proposals = found.map((f) => f.proposal);
-  for (const item of found) {
-    if (decision === "approve" && conflictsWith(item.proposal, proposals).length) {
-      counts.skipped++;
-      continue;
-    }
-    try {
-      if (decision === "approve") await approveFound(store, item, item.proposal.when);
-      else await rejectFound(store, item);
-      counts.done++;
-    } catch (error) {
-      if (!(error instanceof ProposalError)) console.error(JSON.stringify({ approvalError: String(error), proposal: item.proposal.id }));
-      counts.failed++;
-    }
+  let result;
+  try {
+    result = await decide(store, decision, chosen);
+  } catch (error) {
+    return errorPage(error);
   }
+  const counts = { done: result.done.length, gone: result.gone.length, skipped: result.skipped.length, failed: result.failed.length, left: ids.length - chosen.length };
   const query = new URLSearchParams({ [decision === "approve" ? "approved" : "rejected"]: String(counts.done) });
   for (const key of ["gone", "skipped", "failed", "left"] as const) if (counts[key]) query.set(key, String(counts[key]));
   return new Response(null, { status: 303, headers: { Location: `/approve?${query}` } });
@@ -238,6 +226,6 @@ ${conflict ? `<p class="meta"><strong>Conflicts with another proposal.</strong> 
 <div class="actions bar"><button name="decision" value="approve">Approve ticked</button><button name="decision" value="reject" class="secondary">Reject ticked</button></div></form>`
     : say("<p><strong>Nothing pending.</strong> When an agent proposes a change, it shows up here for you to approve.</p>", notice ? "happy" : "idle");
   return html(`<title>Pending${pending.length ? ` (${pending.length})` : ""}</title>${offer}${notice}${tokenWarning()}<h1>Pending proposals</h1>
-${pending.length > 1 ? `<p>Everything is ticked except proposals that conflict. Each approval is saved as its own commit.</p>` : ""}${list}
+${pending.length > 1 ? `<p>Everything is ticked except proposals that conflict. Everything you approve in one press is saved as one commit.</p>` : ""}${list}
 <p><button onclick="passkey('register')" class="secondary">${passkeys ? "Add a passkey on this device" : "Set up a passkey (Face ID or Touch ID)"}</button></p>${offer ? "" : PASSKEY_SCRIPT}`);
 }
