@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { approve, conflictsWith, ProposalError, getPreferences, getProposal, listCategories, listPending, propose, reject } from "../src/dotme";
+import { approve, conflictsWith, decide, ProposalError, getPreferences, getProposal, listCategories, listPending, propose, reject } from "../src/dotme";
 import { isCategoryName } from "../src/prefs";
 import type { Proposal } from "../src/prefs";
 import type { Store } from "../src/store";
@@ -211,5 +211,68 @@ describe("isCategoryName", () => {
     expect(isCategoryName("../coding")).toBe(false);
     expect(isCategoryName("-x")).toBe(false);
     expect(isCategoryName(undefined)).toBe(false);
+  });
+});
+
+describe("decide", () => {
+  it("approves a whole batch as one commit that lists every proposal", async () => {
+    const ids = [];
+    for (let i = 0; i < 16; i++) ids.push((await propose(store, input({ category: i % 2 ? "coding" : "life", text: `Pref ${i}`, by: `agent-${i}` }))).id);
+    const before = store.commits.length;
+    const result = await decide(store, "approve", ids);
+    expect(result.done).toHaveLength(16);
+    expect(store.commits.length - before).toBe(1);
+    const [commit] = store.commits.slice(before);
+    expect(commit.paths.sort()).toEqual(["coding.md", "life.md", ...ids.map((id) => `pending/${id}.json`)].sort());
+    expect(commit.message.split("\n")[0]).toBe("Approve 16 proposals");
+    expect(commit.message).toContain(`- add life: Pref 0\n  Proposed by agent-0 (${ids[0]}), approved by the owner.\n  Evidence: user said so on 2026-10-29`);
+    expect((await getPreferences(store, "coding")).map((p) => p.text)).toEqual(["Pref 1", "Pref 3", "Pref 5", "Pref 7", "Pref 9", "Pref 11", "Pref 13", "Pref 15"]);
+    expect(await listPending(store)).toEqual([]);
+  });
+
+  it("keeps the single-approval commit message and closes the proposal in the same commit", async () => {
+    const p = await propose(store, input());
+    await approve(store, p.id, "work");
+    const last = store.commits.at(-1)!;
+    expect(last.paths).toEqual(["coding.md", `pending/${p.id}.json`]);
+    expect(last.message).toBe(`add coding: Prefer Cloudflare over Supabase\n\nProposed by claude-code (${p.id}), approved by the owner.\nScope: work\nEvidence: user said so on 2026-10-29`);
+  });
+
+  it("saves each approval with the scope it was proposed with", async () => {
+    const p = await propose(store, input({ when: "personal projects" }));
+    await decide(store, "approve", [p.id]);
+    expect((await getPreferences(store, "coding"))[0].when).toBe("personal projects");
+  });
+
+  it("skips conflicts, counts gone ones and keeps failed ones open", async () => {
+    await approve(store, (await propose(store, input({ text: "Old" }))).id, undefined);
+    await approve(store, (await propose(store, input({ text: "Gone soon" }))).id, undefined);
+    const [old, gone] = await getPreferences(store, "coding");
+    const change = await propose(store, input({ op: "change", replaces: old.id, text: "New" }));
+    const remove = await propose(store, input({ op: "remove", replaces: old.id, text: undefined }));
+    const stale = await propose(store, input({ op: "change", replaces: gone.id, text: "Too late" }));
+    await approve(store, (await propose(store, input({ op: "remove", replaces: gone.id, text: undefined }))).id, undefined);
+    const add = await propose(store, input({ text: "Fresh" }));
+    const result = await decide(store, "approve", [change.id, remove.id, stale.id, add.id, "q-00000000", "../x"]);
+    expect(result.done).toEqual([add.id]);
+    expect(result.skipped.sort()).toEqual([change.id, remove.id].sort());
+    expect(result.failed.map((f) => f.id)).toEqual([stale.id]);
+    expect(result.gone).toEqual(["q-00000000", "../x"]);
+    expect((await listPending(store)).map((p) => p.id).sort()).toEqual([change.id, remove.id, stale.id].sort());
+  });
+
+  it("rejects a batch as one commit", async () => {
+    const ids = [(await propose(store, input())).id, (await propose(store, input())).id];
+    const before = store.commits.length;
+    expect((await decide(store, "reject", ids)).done).toHaveLength(2);
+    expect(store.commits.length - before).toBe(1);
+    expect(store.commits.at(-1)!.message).toBe(`Reject 2 proposals\n\n- Close proposal ${ids[0]}: rejected\n\n- Close proposal ${ids[1]}: rejected`);
+    expect(await listPending(store)).toEqual([]);
+  });
+
+  it("commits nothing when nothing could be decided", async () => {
+    const before = store.messages.length;
+    expect(await decide(store, "approve", ["q-00000000"])).toMatchObject({ done: [], gone: ["q-00000000"] });
+    expect(store.messages.length).toBe(before);
   });
 });

@@ -3,7 +3,7 @@
 
 import { applyProposal, DEFAULT_CATEGORIES, isCategoryName, newId, parsePreferences, serializePreferences } from "./prefs";
 import type { Category, Preference, Proposal } from "./prefs";
-import type { Store } from "./store";
+import type { Change, Store } from "./store";
 
 const prefPath = (category: Category) => `${category}.md`;
 const pendingPath = (id: string) => `pending/${id}.json`;
@@ -43,9 +43,10 @@ export async function listCategories(store: Store): Promise<Category[]> {
 }
 
 // Open proposals, oldest first. Without `categories` (the owner's view), every category.
+// The proposals are read together, so the number of calls does not grow with the list.
 export async function listPending(store: Store, categories?: readonly Category[]): Promise<Proposal[]> {
-  const paths = await store.list("pending");
-  const proposals = await Promise.all(paths.map(async (path) => JSON.parse((await store.read(path))!.content) as Proposal));
+  const files = await store.snapshot().read(await store.list("pending"));
+  const proposals = [...files.values()].filter((content) => content !== null).map((content) => JSON.parse(content) as Proposal);
   return proposals.filter((p) => !categories || categories.includes(p.category)).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 }
 
@@ -59,47 +60,107 @@ export function conflictsWith(proposal: Proposal, pending: Proposal[]): Proposal
 export class ProposalError extends Error {}
 
 export async function approve(store: Store, id: string, when: string | undefined): Promise<void> {
-  const found = await getProposal(store, id);
-  if (!found) throw new ProposalError("Proposal not found: it was already approved or rejected.");
-  await approveFound(store, found, when);
-}
-
-// Approves a proposal already read with getProposal, so a batch reads each proposal once.
-export async function approveFound(store: Store, found: { proposal: Proposal; sha: string }, when: string | undefined): Promise<void> {
-  const { proposal, sha } = found;
-  const id = proposal.id;
-  const path = prefPath(proposal.category);
-  const today = new Date().toISOString().slice(0, 10);
-  const message = [
-    `${proposal.op} ${proposal.category}: ${proposal.text ?? proposal.replaces}`,
-    "",
-    `Proposed by ${proposal.by} (${proposal.id}), approved by the owner.`,
-    when ? `Scope: ${when}` : null,
-    `Evidence: ${proposal.evidence}`,
-  ].filter((line) => line !== null).join("\n");
-
-  // Conditional write: if another approval changed the file in between, re-read and re-apply.
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const file = await store.read(path);
-    const current = file ? parsePreferences(file.content) : [];
-    // Another approval (or a hand edit) removed the preference this one changes or removes.
-    if (proposal.op !== "add" && !current.some((p) => p.id === proposal.replaces)) {
-      throw new ProposalError(`The preference this proposal ${proposal.op === "remove" ? "removes" : "changes"} (${proposal.replaces}) is no longer in ${proposal.category}. Reject it.`);
-    }
-    const next = applyProposal(current, proposal, when, today);
-    if (await store.write(path, serializePreferences(proposal.category, next), file?.sha ?? null, message)) {
-      await store.remove(pendingPath(id), sha, `Close proposal ${id}: approved`);
-      return;
-    }
-  }
-  throw new ProposalError(`${proposal.category} kept changing while saving; try again.`);
+  const result = await decide(store, "approve", [id], () => when);
+  if (result.gone.length) throw new ProposalError("Proposal not found: it was already approved or rejected.");
+  if (result.failed.length) throw new ProposalError(result.failed[0].reason);
 }
 
 export async function reject(store: Store, id: string): Promise<void> {
-  const found = await getProposal(store, id);
-  if (found) await rejectFound(store, found);
+  await decide(store, "reject", [id]);
 }
 
-export async function rejectFound(store: Store, found: { proposal: Proposal; sha: string }): Promise<void> {
-  await store.remove(pendingPath(found.proposal.id), found.sha, `Close proposal ${found.proposal.id}: rejected`);
+export interface Decided {
+  done: string[];
+  // Already approved or rejected, or never existed.
+  gone: string[];
+  // Approving these together would touch the same preference twice; they need a decision one at a time.
+  skipped: string[];
+  // Could not be applied, with the reason; still pending.
+  failed: { id: string; reason: string }[];
+}
+
+// Approves or rejects many proposals as one commit: every changed category file is written and every
+// decided proposal closed together, so the number of store calls does not grow with the batch. The
+// commit message still lists each proposal with its agent and evidence. `whenFor` is the scope each
+// approval is saved with (by default the one it was proposed with).
+export async function decide(
+  store: Store,
+  decision: "approve" | "reject",
+  ids: string[],
+  whenFor: (proposal: Proposal) => string | undefined = (p) => p.when,
+): Promise<Decided> {
+  const valid = [...new Set(ids)].filter((id) => /^q-[0-9a-f]{8}$/.test(id));
+  // If something else commits in between, start over from the new version.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const snapshot = store.snapshot();
+    const files = await snapshot.read(valid.map(pendingPath));
+    const found = valid
+      .map((id) => files.get(pendingPath(id)))
+      .filter((content) => content != null)
+      .map((content) => JSON.parse(content) as Proposal)
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    const result: Decided = { done: [], gone: [...new Set(ids)].filter((id) => !found.some((p) => p.id === id)), skipped: [], failed: [] };
+    const changes: Change[] = [];
+    const entries: Entry[] = [];
+
+    if (decision === "reject") {
+      for (const p of found) {
+        result.done.push(p.id);
+        entries.push({ title: `Close proposal ${p.id}: rejected`, details: [] });
+      }
+    } else {
+      const chosen = found.filter((p) => {
+        const conflict = conflictsWith(p, found).length > 0;
+        if (conflict) result.skipped.push(p.id);
+        return !conflict;
+      });
+      const categories = [...new Set(chosen.map((p) => p.category))];
+      const current = await snapshot.read(categories.map(prefPath));
+      const prefs = new Map(categories.map((c) => [c, parsePreferences(current.get(prefPath(c)) ?? "")] as const));
+      const today = new Date().toISOString().slice(0, 10);
+      for (const p of chosen) {
+        const before = prefs.get(p.category)!;
+        // Another approval (or a hand edit) removed the preference this one changes or removes.
+        if (p.op !== "add" && !before.some((pref) => pref.id === p.replaces)) {
+          result.failed.push({ id: p.id, reason: `The preference this proposal ${p.op === "remove" ? "removes" : "changes"} (${p.replaces}) is no longer in ${p.category}. Reject it.` });
+          continue;
+        }
+        const when = whenFor(p);
+        prefs.set(p.category, applyProposal(before, p, when, today));
+        result.done.push(p.id);
+        entries.push(approvalEntry(p, when));
+      }
+      for (const category of new Set(found.filter((p) => result.done.includes(p.id)).map((p) => p.category))) {
+        changes.push({ path: prefPath(category), content: serializePreferences(category, prefs.get(category)!) });
+      }
+    }
+
+    if (!result.done.length) return result;
+    changes.push(...result.done.map((id) => ({ path: pendingPath(id), content: null })));
+    if (await snapshot.commit(changes, commitMessage(decision, entries))) return result;
+  }
+  throw new ProposalError("Your preferences kept changing while saving; try again.");
+}
+
+// One entry of a commit message: a title line and the lines that explain it.
+interface Entry {
+  title: string;
+  details: string[];
+}
+
+function approvalEntry(proposal: Proposal, when: string | undefined): Entry {
+  return {
+    title: `${proposal.op} ${proposal.category}: ${proposal.text ?? proposal.replaces}`,
+    details: [`Proposed by ${proposal.by} (${proposal.id}), approved by the owner.`, ...(when ? [`Scope: ${when}`] : []), `Evidence: ${proposal.evidence}`],
+  };
+}
+
+// A single decision reads as before; a batch gets a summary line and one list item per proposal.
+function commitMessage(decision: "approve" | "reject", entries: Entry[]): string {
+  if (entries.length === 1) {
+    const [{ title, details }] = entries;
+    return decision === "reject" ? title : [title, "", ...details].join("\n");
+  }
+  const items = entries.map(({ title, details }) => [`- ${title}`, ...details.map((d) => `  ${d}`)].join("\n"));
+  return [`${decision === "approve" ? "Approve" : "Reject"} ${entries.length} proposals`, ...items].join("\n\n");
 }

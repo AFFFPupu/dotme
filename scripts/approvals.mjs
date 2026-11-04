@@ -1,5 +1,5 @@
 // Check the approval page against a running server: approving and rejecting ticked proposals in one
-// press, skipping proposals that conflict, the batch limit, and friendly pages instead of errors.
+// press, skipping proposals that conflict, a large batch in one press, and friendly pages instead of errors.
 // Usage: node scripts/approvals.mjs [baseUrl] [passphrase]
 import { getToken } from "./oauth.mjs";
 
@@ -66,13 +66,11 @@ check(`approving a change whose preference is gone explains why (${stale.status}
 const rejected = await decide("reject", [change, "q-00000000"]);
 check(`reject ticked, counting one already gone (${rejected.headers.get("location")})`, rejected.headers.get("location") === "/approve?rejected=1&gone=1");
 
-// At most ten per press; the rest stay pending.
+// Everything ticked goes in one press.
 const many = [];
-for (let i = 0; i < 11; i++) many.push(await propose({ op: "add", text: `Batch many ${i}` }));
-const limited = await decide("approve", many);
-check(`eleven ticked approves ten and says one is left (${limited.headers.get("location")})`, limited.headers.get("location") === "/approve?approved=10&left=1");
-check("the left one is still pending", (await page("/approve")).includes(many[10]));
-await decide("reject", [many[10]]);
+for (let i = 0; i < 16; i++) many.push(await propose({ op: "add", text: `Batch many ${i}` }));
+const all = await decide("approve", many);
+check(`sixteen ticked are approved in one press (${all.headers.get("location")})`, all.headers.get("location") === "/approve?approved=16");
 const after = await page("/approve");
 check("none of these proposals is left pending", ![a, b, change, remove, c, ...many].some((id) => after.includes(id)));
 

@@ -199,6 +199,22 @@ path:
    bottom of the screen while you scroll. Press **Reject ticked**. Pass:
    `Rejected 2 proposals.` and neither is pending.
 
+### 4.3 Many at once
+
+CI only runs batches against KV storage, so check one against GitHub:
+
+1. Have an agent propose 15 throwaway preferences, spread over two
+   categories.
+2. Open `<url>/approve`, leave them all ticked and press **Approve ticked**.
+   Pass: within a few seconds the page says `Approved 15 proposals.` and
+   nothing is left pending.
+3. Run `git -C <data-repo> pull` and `git -C <data-repo> log -1 --stat`.
+   Pass: one new commit titled `Approve 15 proposals`, listing each proposal
+   with its agent and evidence, that changes both category files and removes
+   the 15 `pending/` files.
+4. Remove the throwaway preferences (see 7.3) and approve that batch the same
+   way.
+
 The owner session lasts 30 days per browser.
 
 ## 5. Claude Code
@@ -489,6 +505,7 @@ release blockers; note in the table whether connecting and `whoami` work.
 | 3 | Deploy with `npm run deploy`, URL and KV unchanged | | |
 | 4.1 | Passkey sign-in on Mac | | |
 | 4.2 | Passkey sign-in on phone | | |
+| 4.3 | Batch of 15 approved in one press, one commit | | |
 | 5.1 | Export token and hook script | | |
 | 5.3 | Claude Code plugin installs from the marketplace | | |
 | 5.5 | Claude Code SessionStart hook loads preferences | | |
