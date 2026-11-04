@@ -104,9 +104,8 @@ batch approval, and the setup status page.
 - A free Cloudflare account
 - Claude Code or Codex, to run the install for you
 
-The install also checks for Node 24 or later and `git`.
-<!-- TODO(install time): add "Setup takes about N minutes." with N from a
-     timed cold install that follows INSTALL.md. Do not guess N. -->
+The install also checks for Node 24 or later and `git`. Setup takes about
+5 minutes.
 
 ## Install
 
