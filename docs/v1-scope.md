@@ -26,7 +26,7 @@ Most users will paste the repo link or README into their coding agent and say
 
 | # | Topic | Decision | Why |
 |---|---|---|---|
-| 1 | Who runs the server | Each user deploys their own copy. Ao's `dotme.ao-fu.workers.dev` is one deployment of the template, nothing more. | Cloud clients (claude.ai, ChatGPT, Grok Bot) can only reach a public HTTPS MCP server; a hosted service is out of scope. |
+| 1 | Who runs the server | Each user deploys their own copy. Ao's own instance is one deployment of the template, nothing more. | Cloud clients (claude.ai, ChatGPT, Grok Bot) can only reach a public HTTPS MCP server; a hosted service is out of scope. |
 | 2 | Platform | Cloudflare Workers only. Keep storage and platform code easy to swap; "other platforms welcome as PRs". | `workers-oauth-provider` gives a full OAuth server and KV for free. Vercel needs an external auth server plus Upstash. |
 | 3 | Data storage | The user's own private GitHub repo, one Markdown file per category. KV storage stays for local development only. | Every approval is a commit with agent, time and evidence: a free audit trail, and the data stays the user's. |
 | 4 | Server install | Agent-led install is the main path (`INSTALL.md`, run with `wrangler` and `gh`). A "Deploy to Cloudflare" button is the secondary path. No web setup wizard; `/setup/status` replaces it. | Ground rule above. The install itself shows off the idea. |
