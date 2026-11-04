@@ -19,10 +19,6 @@
   <img src="https://img.shields.io/badge/protocol-MCP-2A2238" alt="MCP">
 </p>
 
-<!-- TODO(demo video): put the 60-90s screen recording of the full loop here,
-     replacing or above hero.gif. Shot list: docs/media/demo-shot-list.md.
-     To embed: drag the .mp4 into the README editor on github.com and keep
-     the user-attachments URL it inserts on a line of its own. -->
 <p align="center">
   <img src="docs/media/hero.gif" alt="Tell Claude Code to use pnpm, approve the change once, and a new Codex session already uses pnpm" width="960">
 </p>
