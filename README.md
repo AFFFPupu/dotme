@@ -38,9 +38,9 @@ MCP server. When an agent notices something new, it **proposes** a change;
 nothing is saved until you approve it, and every approval lands as a commit
 that names the agent and its evidence.
 
-**Why I built this:** new agents show up every month and my work is spread
-across all of them, so I wanted to own my memory myself, in one small place
-that every tool can read.
+**Why I built this:** I use a growing pile of agents, and each one keeps its
+own memory of me. I wanted one memory I own, light enough to work across all
+of them.
 
 - **One source of truth.** Claude Code, Codex, claude.ai, Grok Bot and any
   MCP client with OAuth read the same preferences.
