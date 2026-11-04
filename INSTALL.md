@@ -1,5 +1,7 @@
 # Install dotme
 
+<!-- TODO(install time): "about 15 minutes" below is an estimate. Replace it
+     with the time measured in a cold install, and match the README. -->
 dotme runs as your own Cloudflare Worker and keeps your preferences in your
 own private GitHub repo. Installing it takes about 15 minutes. You can do it
 by hand, but it is written so that your coding agent can do it with you:
