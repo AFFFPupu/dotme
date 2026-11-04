@@ -179,6 +179,34 @@ name, URL, KV namespace and data repo go in the gitignored
 Other platforms than Cloudflare are welcome as PRs: storage and platform
 code are kept easy to swap.
 
+## FAQ
+
+### How is this different from my agent's built-in memory?
+
+Built-in memory (claude.ai memory, ChatGPT memory, a `CLAUDE.md` file) is
+put into the context of every conversation by the client. dotme keeps your
+preferences on your own server and agents read them through MCP: Claude
+Code and Codex load them once at session start with the plugin hook, and
+cloud clients call `get_preferences` when they need them.
+
+| | Built-in memory | dotme |
+|---|---|---|
+| **Where it lives** | Inside one product | Markdown in your own GitHub repo |
+| **Who writes it** | The client, often on its own | The agent proposes, you approve each change |
+| **What you see** | A summary the client made | The exact text you approved, with git history |
+| **Shared across agents** | No | Yes, every connected client reads the same file |
+| **Token cost** | In context for the whole conversation, used or not | Session hook: the same, but only the categories you choose. Cloud clients: the tool definitions (roughly a thousand tokens), plus a category only when they read it |
+| **Speed** | No extra step | Session hook: none. Cloud clients: one tool call, usually a second or two |
+| **Main risk** | Compressed, wrong or unwanted entries | A cloud agent may not think to call `get_preferences` |
+
+The numbers are rough and depend on the client and how much you store.
+
+In practice: built-in memory suits a few facts that every chat needs. dotme
+suits preferences you want to control, share across agents and keep growing,
+because an agent only reads the categories it is allowed to and changes wait
+for you. They work side by side; just keep each preference in one place so
+the two never disagree.
+
 ## License
 
 [MIT](LICENSE). Dot is dotme's own pixel character; see
