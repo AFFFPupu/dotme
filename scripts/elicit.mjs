@@ -27,6 +27,7 @@ let { client, asked } = await connect(inline, { action: "accept", content: {} })
 const approved = result(await propose(client, "Inline approved preference", "tests"));
 console.log("inline approve:", approved, "| dialog:", asked[0]);
 assert.equal(approved.status, "approved and saved");
+assert.equal(approved.savedIn, "coding.md");
 assert.match(asked[0], /inline-test wants to add: "Inline approved preference" in coding, only when: tests\./);
 assert.match(asked[0], /Accept saves it now\. Decline or close this/);
 // A client that accepts an empty form may send no content at all; that still saves.

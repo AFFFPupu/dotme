@@ -41,11 +41,11 @@ export function memoryStore() {
         },
         async commit(changes, message) {
           for (const change of changes) store.beforeWrite?.(change.path);
-          for (const [path, content] of seen) if ((files.get(path) ?? null) !== content) return false;
+          for (const [path, content] of seen) if ((files.get(path) ?? null) !== content) return null;
           for (const { path, content } of changes) content === null ? files.delete(path) : files.set(path, content);
           messages.push(message);
           commits.push({ message, paths: changes.map((c) => c.path) });
-          return true;
+          return { sha: String(commits.length).padStart(40, "0") };
         },
       };
     },

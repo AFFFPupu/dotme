@@ -41,8 +41,8 @@ const b = await propose({ op: "add", text: "Batch B" });
 const list = await page("/approve");
 check("pending list ticks both, fits a phone and offers one button", ticked(list, a) && ticked(list, b) && list.includes("initial-scale=1") && list.includes("Approve ticked"));
 const both = await decide("approve", [a, b]);
-check(`approving two lands on the list with a count (${both.headers.get("location")})`, both.status === 303 && both.headers.get("location") === "/approve?approved=2");
-check("the list says what happened", (await page(both.headers.get("location"))).includes("Approved 2 proposals."));
+check(`approving two lands on the list with a count (${both.headers.get("location")})`, both.status === 303 && both.headers.get("location") === "/approve?approved=2&saved=life");
+check("the list says what happened and where it was saved", (await page(both.headers.get("location"))).includes("Approved 2 proposals. Saved in <code>life.md</code>."));
 const saved = await call("get_preferences", { category: "life" });
 const prefA = saved.find((p) => p.text === "Batch A");
 check("both are saved", prefA && saved.some((p) => p.text === "Batch B"));
@@ -54,13 +54,13 @@ const c = await propose({ op: "add", text: "Batch C" });
 const conflictList = await page("/approve");
 check("conflicting proposals are not ticked", !ticked(conflictList, change) && !ticked(conflictList, remove) && ticked(conflictList, c));
 const mixed = await decide("approve", [change, remove, c]);
-check(`conflicts are skipped, the rest approved (${mixed.headers.get("location")})`, mixed.headers.get("location") === "/approve?approved=1&skipped=2");
+check(`conflicts are skipped, the rest approved (${mixed.headers.get("location")})`, mixed.headers.get("location") === "/approve?approved=1&saved=life&skipped=2");
 
 // Friendly pages instead of server errors.
 const again = await post(`/approve/${c}`, { decision: "approve" }, session);
 const againPage = await again.text();
 check(`approving twice explains instead of failing (${again.status})`, again.status === 409 && againPage.includes("already approved or rejected"));
-check("a single approval lands on the list with a count", (await post(`/approve/${remove}`, { decision: "approve" }, session)).headers.get("location") === "/approve?approved=1");
+check("a single approval lands on the list with a count", (await post(`/approve/${remove}`, { decision: "approve" }, session)).headers.get("location") === "/approve?approved=1&saved=life");
 const stale = await post(`/approve/${change}`, { decision: "approve" }, session);
 check(`approving a change whose preference is gone explains why (${stale.status})`, stale.status === 409 && (await stale.text()).includes("is no longer in life"));
 const rejected = await decide("reject", [change, "q-00000000"]);
@@ -70,7 +70,7 @@ check(`reject ticked, counting one already gone (${rejected.headers.get("locatio
 const many = [];
 for (let i = 0; i < 16; i++) many.push(await propose({ op: "add", text: `Batch many ${i}` }));
 const all = await decide("approve", many);
-check(`sixteen ticked are approved in one press (${all.headers.get("location")})`, all.headers.get("location") === "/approve?approved=16");
+check(`sixteen ticked are approved in one press (${all.headers.get("location")})`, all.headers.get("location") === "/approve?approved=16&saved=life");
 const after = await page("/approve");
 check("none of these proposals is left pending", ![a, b, change, remove, c, ...many].some((id) => after.includes(id)));
 

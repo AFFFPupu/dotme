@@ -63,14 +63,14 @@ describe("KV snapshot", () => {
     await store.write("pending/q-1.json", "{}", null, "");
     const snap = store.snapshot();
     expect(await snap.read(["coding.md", "pending/q-1.json", "missing.md"])).toEqual(new Map([["coding.md", "one"], ["pending/q-1.json", "{}"], ["missing.md", null]]));
-    expect(await snap.commit([{ path: "coding.md", content: "two" }, { path: "pending/q-1.json", content: null }], "")).toBe(true);
+    expect(await snap.commit([{ path: "coding.md", content: "two" }, { path: "pending/q-1.json", content: null }], "")).toEqual({ sha: null });
     expect((await store.read("coding.md"))!.content).toBe("two");
     expect(await store.read("pending/q-1.json")).toBeNull();
 
     const stale = store.snapshot();
     await stale.read(["coding.md"]);
     await store.write("coding.md", "three", (await store.read("coding.md"))!.sha, "");
-    expect(await stale.commit([{ path: "coding.md", content: "four" }], "")).toBe(false);
+    expect(await stale.commit([{ path: "coding.md", content: "four" }], "")).toBeNull();
     expect((await store.read("coding.md"))!.content).toBe("three");
   });
 });
@@ -103,7 +103,7 @@ describe("GitHub snapshot", () => {
     const snap = github().snapshot();
     expect(await snap.read(["coding.md", "pending/q-1.json"])).toEqual(new Map([["coding.md", "# coding\n"], ["pending/q-1.json", null]]));
     expect(calls[1].body.variables).toMatchObject({ owner: "octo", name: "data", p0: "c0:coding.md", p1: "c0:pending/q-1.json" });
-    expect(await snap.commit([{ path: "coding.md", content: "# coding\n\n- x\n" }, { path: "pending/q-1.json", content: null }], "Approve 1")).toBe(true);
+    expect(await snap.commit([{ path: "coding.md", content: "# coding\n\n- x\n" }, { path: "pending/q-1.json", content: null }], "Approve 1")).toEqual({ sha: "c1" });
     expect(calls.map((c) => `${c.method} ${c.url.replace("https://api.github.com/", "")}`)).toEqual([
       "POST graphql",
       "POST graphql",
@@ -126,6 +126,13 @@ describe("GitHub snapshot", () => {
     fakeGitHub(422);
     const snap = github().snapshot();
     await snap.read(["coding.md"]);
-    expect(await snap.commit([{ path: "coding.md", content: "x" }], "m")).toBe(false);
+    expect(await snap.commit([{ path: "coding.md", content: "x" }], "m")).toBeNull();
+  });
+
+  it("links files and commits on github.com", () => {
+    const { links } = github();
+    expect(links!.file("coding.md")).toBe("https://github.com/octo/data/blob/HEAD/coding.md");
+    expect(links!.commit("c1")).toBe("https://github.com/octo/data/commit/c1");
+    expect(makeStore({ STORAGE: "kv", OAUTH_KV: fakeKV() }).links).toBeUndefined();
   });
 });

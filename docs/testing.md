@@ -206,8 +206,10 @@ CI only runs batches against KV storage, so check one against GitHub:
 1. Have an agent propose 15 throwaway preferences, spread over two
    categories.
 2. Open `<url>/approve`, leave them all ticked and press **Approve ticked**.
-   Pass: within a few seconds the page says `Approved 15 proposals.` and
-   nothing is left pending.
+   Pass: within a few seconds the page says `Approved 15 proposals.`, names
+   both category files as links, and nothing is left pending. Each file link
+   opens that file in the data repo on GitHub, and **See the commit** opens
+   the commit from step 3.
 3. Run `git -C <data-repo> pull` and `git -C <data-repo> log -1 --stat`.
    Pass: one new commit titled `Approve 15 proposals`, listing each proposal
    with its agent and evidence, that changes both category files and removes

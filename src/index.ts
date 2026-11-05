@@ -14,7 +14,7 @@ import { escape, handleApprovalPages, hasSession, html, samePassphrase, sessionC
 import { messagePage, say } from "./html";
 import { checkPassphrase, lockMessage } from "./ratelimit";
 import { hasPasskeys, PASSKEY_SCRIPT } from "./passkeys";
-import { approve, getPreferences, listCategories, listPending, propose } from "./dotme";
+import { approve, getPreferences, listCategories, listPending, prefPath, propose } from "./dotme";
 import { CATEGORY_NAME, DEFAULT_CATEGORIES, cleanLine, isCategoryName } from "./prefs";
 import type { Category, Preference } from "./prefs";
 import { resourceFor, setupStatus } from "./setup";
@@ -210,8 +210,15 @@ function createServer(origin: string) {
             evidence: cleanLine(input.evidence, 500),
             by: agent,
           });
-          await approve(store, proposal.id, proposal.when);
-          return text({ status: "approved and saved", proposal: proposal.id });
+          const { commit } = await approve(store, proposal.id, proposal.when);
+          // Where it was saved, so the agent can tell the user where to look.
+          const file = prefPath(proposal.category);
+          return text({
+            status: "approved and saved",
+            proposal: proposal.id,
+            savedIn: file,
+            ...(store.links ? { view: store.links.file(file), ...(commit ? { commit: store.links.commit(commit) } : {}) } : {}),
+          });
         }
         // Declined or dismissed: keep it as a pending proposal with a link, below.
       }
