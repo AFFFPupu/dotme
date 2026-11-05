@@ -1,11 +1,12 @@
 // Owner-facing pages: sign-in with the passphrase, then the approval page.
 
-import { approve, conflictsWith, decide, getPreferences, getProposal, listPending, ProposalError, reject } from "./dotme";
+import { approve, conflictsWith, decide, getPreferences, getProposal, listPending, prefPath, ProposalError, reject } from "./dotme";
+import type { Decided } from "./dotme";
 import type { Category, Preference, Proposal } from "./prefs";
-import { cleanLine } from "./prefs";
+import { cleanLine, isCategoryName } from "./prefs";
 import { authenticate, authenticationOptions, hasPasskeys, PASSKEY_SCRIPT, register, registrationOptions } from "./passkeys";
 import { checkPassphrase, lockMessage } from "./ratelimit";
-import type { Store } from "./store";
+import type { Links, Store } from "./store";
 import { lastTokenExpiry } from "./store";
 import { escape, html, say } from "./html";
 import { expiryWarning, parseTokenExpiry } from "./setup";
@@ -105,19 +106,20 @@ export async function handleApprovalPages(request: Request, passphrase: string, 
   const offer = url.searchParams.get("passkey") === "offer" ? passkeyOffer(url.pathname) : "";
   if (!id) {
     if (form) return batchDecision(store, form);
-    return pendingListPage(store, await hasPasskeys(kv), offer, resultNotice(url.searchParams));
+    return pendingListPage(store, await hasPasskeys(kv), offer, resultNotice(url.searchParams, store.links));
   }
 
   if (form) {
     const decision = form.get("decision");
+    let query = new URLSearchParams({ rejected: "1" });
     try {
-      if (decision === "approve") await approve(store, id, cleanLine(String(form.get("when") ?? ""), 120) || undefined);
+      if (decision === "approve") query = savedQuery(await approve(store, id, cleanLine(String(form.get("when") ?? ""), 120) || undefined));
       else if (decision === "reject") await reject(store, id);
       else return new Response(null, { status: 303, headers: { Location: `/approve/${id}` } });
     } catch (error) {
       return errorPage(error, id);
     }
-    return new Response(null, { status: 303, headers: { Location: `/approve?${decision === "approve" ? "approved" : "rejected"}=1` } });
+    return new Response(null, { status: 303, headers: { Location: `/approve?${query}` } });
   }
 
   const found = await getProposal(store, id);
@@ -172,18 +174,27 @@ async function batchDecision(store: Store, form: FormData): Promise<Response> {
   } catch (error) {
     return errorPage(error);
   }
-  const counts = { done: result.done.length, gone: result.gone.length, skipped: result.skipped.length, failed: result.failed.length, left: ids.length - chosen.length };
-  const query = new URLSearchParams({ [decision === "approve" ? "approved" : "rejected"]: String(counts.done) });
+  const counts = { gone: result.gone.length, skipped: result.skipped.length, failed: result.failed.length, left: ids.length - chosen.length };
+  const query = decision === "approve" ? savedQuery(result) : new URLSearchParams({ rejected: String(result.done.length) });
   for (const key of ["gone", "skipped", "failed", "left"] as const) if (counts[key]) query.set(key, String(counts[key]));
   return new Response(null, { status: 303, headers: { Location: `/approve?${query}` } });
 }
 
-// What the last decision did, from the redirect's query. Only numbers are read back.
-function resultNotice(params: URLSearchParams): string {
+// The redirect after approving: how many, which categories they were saved in, and the commit.
+function savedQuery(result: Decided): URLSearchParams {
+  const query = new URLSearchParams({ approved: String(result.done.length) });
+  for (const category of result.saved) query.append("saved", category);
+  if (result.commit) query.set("commit", result.commit);
+  return query;
+}
+
+// What the last decision did, from the redirect's query. Only numbers, category names and a commit
+// sha are read back, each checked, and links are built here rather than taken from the query.
+export function resultNotice(params: URLSearchParams, links?: Links): string {
   const n = (key: string) => Math.max(0, Math.floor(Number(params.get(key)) || 0));
   const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
   const parts: string[] = [];
-  if (params.has("approved")) parts.push(`Approved ${plural(n("approved"), "proposal")}.`);
+  if (params.has("approved")) parts.push(`Approved ${plural(n("approved"), "proposal")}.${n("approved") ? savedWhere(params, links) : ""}`);
   if (params.has("rejected")) parts.push(`Rejected ${plural(n("rejected"), "proposal")}.`);
   if (n("gone")) parts.push(`${plural(n("gone"), "proposal")} had already been handled.`);
   if (n("skipped")) parts.push(`Skipped ${plural(n("skipped"), "proposal")} that conflict with each other; open them to decide one at a time.`);
@@ -192,6 +203,19 @@ function resultNotice(params: URLSearchParams): string {
   if (!parts.length) return "";
   const happy = (n("approved") > 0 || n("rejected") > 0) && !n("failed") && !n("skipped");
   return `<div role="status">${say(`<p>${parts.join(" ")}</p>`, happy ? "happy" : "idle")}</div>`;
+}
+
+// Where the approved proposals were saved: each category's file, linked on GitHub, and the commit.
+function savedWhere(params: URLSearchParams, links?: Links): string {
+  const files = [...new Set(params.getAll("saved"))].filter(isCategoryName).map((category) => {
+    const file = escape(prefPath(category));
+    return links ? `<a href="${escape(links.file(prefPath(category)))}">${file}</a>` : `<code>${file}</code>`;
+  });
+  if (!files.length) return "";
+  const list = files.length === 1 ? files[0] : `${files.slice(0, -1).join(", ")} and ${files.at(-1)}`;
+  const sha = params.get("commit") ?? "";
+  const commit = links && /^[0-9a-f]{7,64}$/.test(sha) ? ` <a href="${escape(links.commit(sha))}">See the commit</a>.` : "";
+  return ` Saved in ${list}${links ? " in your preferences repo on GitHub" : ""}.${commit}`;
 }
 
 // Warns on owner pages once the GitHub token has under 30 days left. Read after the page's own

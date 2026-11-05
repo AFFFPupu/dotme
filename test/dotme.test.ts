@@ -228,6 +228,8 @@ describe("decide", () => {
     expect(commit.message).toContain(`- add life: Pref 0\n  Proposed by agent-0 (${ids[0]}), approved by the owner.\n  Evidence: user said so on 2026-10-29`);
     expect((await getPreferences(store, "coding")).map((p) => p.text)).toEqual(["Pref 1", "Pref 3", "Pref 5", "Pref 7", "Pref 9", "Pref 11", "Pref 13", "Pref 15"]);
     expect(await listPending(store)).toEqual([]);
+    expect(result.saved.sort()).toEqual(["coding", "life"]);
+    expect(result.commit).toMatch(/^[0-9]{40}$/);
   });
 
   it("keeps the single-approval commit message and closes the proposal in the same commit", async () => {

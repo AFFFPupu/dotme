@@ -15,6 +15,13 @@ export interface Store {
   list(dir: string): Promise<string[]>;
   // One consistent version of the store, to read many files at once and commit many changes as one.
   snapshot(): Snapshot;
+  // Where the owner can see a file or a commit on the web. Only the GitHub store has these.
+  links?: Links;
+}
+
+export interface Links {
+  file(path: string): string;
+  commit(sha: string): string;
 }
 
 // A file to write, or to delete when `content` is null.
@@ -26,8 +33,9 @@ export interface Change {
 export interface Snapshot {
   // These files as they are at the snapshot's version (null: no such file), in as few calls as the store allows.
   read(paths: string[]): Promise<Map<string, string | null>>;
-  // Every change as one commit on top of that version. False, with nothing written, if the store moved on.
-  commit(changes: Change[], message: string): Promise<boolean>;
+  // Every change as one commit on top of that version, with the commit's sha (null when the store has
+  // no commits). Null, with nothing written, if the store moved on.
+  commit(changes: Change[], message: string): Promise<{ sha: string | null } | null>;
 }
 
 export interface StoreEnv {
@@ -83,12 +91,12 @@ function kvStore(kv: KVNamespace): Store {
           return found;
         },
         async commit(changes) {
-          for (const [path, content] of seen) if ((await kv.get(key(path))) !== content) return false;
+          for (const [path, content] of seen) if ((await kv.get(key(path))) !== content) return null;
           for (const change of changes) {
             if (change.content === null) await kv.delete(key(change.path));
             else await kv.put(key(change.path), change.content);
           }
-          return true;
+          return { sha: null };
         },
       };
     },
@@ -188,11 +196,16 @@ function githubStore(token: string, repo: string): Store {
           const newCommit = await json<{ sha: string }>("commit", await api(`repos/${repo}/git/commits`, { method: "POST", body: JSON.stringify({ message, tree: newTree.sha, parents: [commit] }) }));
           const res = await api(`repos/${repo}/git/refs/heads/${branch}`, { method: "PATCH", body: JSON.stringify({ sha: newCommit.sha, force: false }) });
           // Not a fast-forward: something else committed since the snapshot. The new commit is left unreferenced.
-          if (res.status === 409 || res.status === 422) return false;
+          if (res.status === 409 || res.status === 422) return null;
           if (!res.ok) throw new Error(`GitHub update ${branch}: ${res.status}`);
-          return true;
+          return { sha: newCommit.sha };
         },
       };
+    },
+    // HEAD is the default branch, so a file link shows the latest version, not the one at this commit.
+    links: {
+      file: (path) => `https://github.com/${owner}/${name}/blob/HEAD/${path.split("/").map(encodeURIComponent).join("/")}`,
+      commit: (sha) => `https://github.com/${owner}/${name}/commit/${sha}`,
     },
   };
 }

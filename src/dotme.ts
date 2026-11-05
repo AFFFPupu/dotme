@@ -5,7 +5,8 @@ import { applyProposal, DEFAULT_CATEGORIES, isCategoryName, newId, parsePreferen
 import type { Category, Preference, Proposal } from "./prefs";
 import type { Change, Store } from "./store";
 
-const prefPath = (category: Category) => `${category}.md`;
+// The file a category is saved in. The approval page names it after saving.
+export const prefPath = (category: Category) => `${category}.md`;
 const pendingPath = (id: string) => `pending/${id}.json`;
 
 export async function getPreferences(store: Store, category: Category): Promise<Preference[]> {
@@ -59,10 +60,11 @@ export function conflictsWith(proposal: Proposal, pending: Proposal[]): Proposal
 // its message as a friendly page instead of a server error.
 export class ProposalError extends Error {}
 
-export async function approve(store: Store, id: string, when: string | undefined): Promise<void> {
+export async function approve(store: Store, id: string, when: string | undefined): Promise<Decided> {
   const result = await decide(store, "approve", [id], () => when);
   if (result.gone.length) throw new ProposalError("Proposal not found: it was already approved or rejected.");
   if (result.failed.length) throw new ProposalError(result.failed[0].reason);
+  return result;
 }
 
 export async function reject(store: Store, id: string): Promise<void> {
@@ -77,6 +79,10 @@ export interface Decided {
   skipped: string[];
   // Could not be applied, with the reason; still pending.
   failed: { id: string; reason: string }[];
+  // The categories the approved proposals were saved in, and the commit that saved them (null for
+  // KV storage, or when nothing was decided). The approval page links to both.
+  saved: Category[];
+  commit: string | null;
 }
 
 // Approves or rejects many proposals as one commit: every changed category file is written and every
@@ -99,7 +105,7 @@ export async function decide(
       .filter((content) => content != null)
       .map((content) => JSON.parse(content) as Proposal)
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-    const result: Decided = { done: [], gone: [...new Set(ids)].filter((id) => !found.some((p) => p.id === id)), skipped: [], failed: [] };
+    const result: Decided = { done: [], gone: [...new Set(ids)].filter((id) => !found.some((p) => p.id === id)), skipped: [], failed: [], saved: [], commit: null };
     const changes: Change[] = [];
     const entries: Entry[] = [];
 
@@ -130,14 +136,16 @@ export async function decide(
         result.done.push(p.id);
         entries.push(approvalEntry(p, when));
       }
-      for (const category of new Set(found.filter((p) => result.done.includes(p.id)).map((p) => p.category))) {
+      result.saved = [...new Set(found.filter((p) => result.done.includes(p.id)).map((p) => p.category))];
+      for (const category of result.saved) {
         changes.push({ path: prefPath(category), content: serializePreferences(category, prefs.get(category)!) });
       }
     }
 
     if (!result.done.length) return result;
     changes.push(...result.done.map((id) => ({ path: pendingPath(id), content: null })));
-    if (await snapshot.commit(changes, commitMessage(decision, entries))) return result;
+    const committed = await snapshot.commit(changes, commitMessage(decision, entries));
+    if (committed) return { ...result, commit: committed.sha };
   }
   throw new ProposalError("Your preferences kept changing while saving; try again.");
 }
